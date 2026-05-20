@@ -1,23 +1,43 @@
-# Continuous delivery: test, build Docker image, push to Artifact Registry, deploy to Cloud Run.
-# Triggers: push to `main`, or manual workflow dispatch (deploy only runs when the ref is `main`).
+# CD: build Docker image → Docker Hub → Google Cloud Run
 #
-# One-time GCP + GitHub setup: docs/google-cloud-run.md
-name: Deploy (Cloud Run)
+# GitHub secret/variable names match TRWM-backend (Node) `.github/workflows/cd.yml`:
+#
+# Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   DOCKERHUB_USERNAME   Docker Hub namespace (username or org)
+#   DOCKERHUB_TOKEN      Docker Hub Access Token (Read & Write) — paste as ONE line, no quotes, no trailing newline
+#   GCP_SA_KEY           Service account JSON key for deploying to Cloud Run
+# You can store GCP + repo name as either Secrets or Variables. This workflow reads
+# Secrets first (matches common setups), then falls back to Variables.
+#
+#   GCP_PROJECT_ID       GCP project ID (e.g. my-project-123)
+#   GCP_REGION           e.g. europe-west1
+#   CLOUD_RUN_SERVICE    Cloud Run service name
+#   DOCKERHUB_REPO       Docker Hub image repository name (defaults to dwsc-backend)
+#
+# Optional (same names as Node; not written to Cloud Run by this workflow until you add env merge):
+#   MONGO_URI, FIREBASE_SERVICE_ACCOUNT_JSON, API_FOOTBALL_KEY
+#
+# Spring listens on PORT; Cloud Run is deployed with --port=8080.
+
+name: CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
-  id-token: write
 
 env:
-  GCP_REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
-  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-  ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY || 'dwsc' }}
-  CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'dwsc-backend' }}
+  DOCKERHUB_REPO_NAME: ${{ secrets.DOCKERHUB_REPO || vars.DOCKERHUB_REPO || 'dwsc-backend' }}
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT_ID || vars.GCP_PROJECT_ID }}
+  GCP_REGION_NAME: ${{ secrets.GCP_REGION || vars.GCP_REGION }}
+  CLOUD_RUN_NAME: ${{ secrets.CLOUD_RUN_SERVICE || vars.CLOUD_RUN_SERVICE }}
 
 jobs:
   test:
@@ -39,49 +59,55 @@ jobs:
     name: Deploy to Cloud Run
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Check GCP configuration
+      - name: Verify Cloud Run configuration
         run: |
-          if [ -z "$GCP_PROJECT_ID" ]; then
-            echo "::error::Set GitHub repository Variable GCP_PROJECT_ID (and auth secrets — see docs/google-cloud-run.md)."
+          set -euo pipefail
+          if [ -z "${GCP_PROJECT:-}" ] || [ -z "${GCP_REGION_NAME:-}" ] || [ -z "${CLOUD_RUN_NAME:-}" ]; then
+            echo "::error::Set GCP_PROJECT_ID, GCP_REGION, and CLOUD_RUN_SERVICE (repository Secrets and/or Variables — same names as TRWM-backend)."
             exit 1
           fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
         env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          user=$(printf '%s' "$DOCKERHUB_USERNAME" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          token=$(printf '%s' "$DOCKERHUB_TOKEN" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          if [ -z "$user" ] || [ -z "$token" ]; then
+            echo "::error::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is empty. Add both under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "DOCKERHUB_USER=$user" >> "$GITHUB_ENV"
+          printf '%s' "$token" | docker login -u "$user" --password-stdin docker.io
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_USER }}/${{ env.DOCKERHUB_REPO_NAME }}:latest
+            ${{ env.DOCKERHUB_USER }}/${{ env.DOCKERHUB_REPO_NAME }}:${{ github.sha }}
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-
-      - name: Build and push image
-        id: image
-        run: |
-          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/${CLOUD_RUN_SERVICE}:${GITHUB_SHA}"
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
-          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
-          service: ${{ env.CLOUD_RUN_SERVICE }}
-          region: ${{ env.GCP_REGION }}
-          image: ${{ steps.image.outputs.image }}
-          flags: "--allow-unauthenticated --port=8080"
-          # Add env/secrets after you create them in Cloud Run or Secret Manager, for example:
-          # env_vars: |-
-          #   SPRING_PROFILES_ACTIVE=prod
-          #   SPRING_DATASOURCE_URL=${{ vars.SPRING_DATASOURCE_URL }}
-          # secrets: |-
-          #   SPRING_DATASOURCE_PASSWORD=projects/PROJECT_ID/secrets/dwsc-db-password/versions/latest
+          service: ${{ env.CLOUD_RUN_NAME }}
+          region: ${{ env.GCP_REGION_NAME }}
+          project_id: ${{ env.GCP_PROJECT }}
+          image: ${{ env.DOCKERHUB_USER }}/${{ env.DOCKERHUB_REPO_NAME }}:${{ github.sha }}
+          flags: --allow-unauthenticated --port=8080

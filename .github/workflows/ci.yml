@@ -1,13 +1,14 @@
-# Continuous integration: Maven tests on PRs and on pushes to non-main branches.
-# Pushes to `main` are handled by deploy-cloud-run.yml (test + deploy).
+# Continuous integration: Maven tests on PRs and on pushes to branches other than main/master.
+# Pushes to main/master are handled by cd.yml (test + deploy).
 name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, master]
   push:
     branches-ignore:
       - main
+      - master
 
 permissions:
   contents: read
