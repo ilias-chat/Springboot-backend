@@ -1,0 +1,18 @@
+# Git and IDE
+.git
+.github
+.idea
+.vscode
+*.iml
+
+# Build output (fresh build inside Docker)
+target
+
+# Docs and misc
+*.md
+!README.md
+
+# Logs and local env (never bake secrets into images)
+*.log
+.env
+.env.*
