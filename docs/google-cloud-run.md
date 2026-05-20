@@ -23,11 +23,9 @@ Your app listens on **`PORT`** (Cloud Run sets this automatically). `application
 | `SPRING_DATASOURCE_URL` | Yes | JDBC URL (merged into Cloud Run each deploy via `cloudrun-env.json`, same pattern as Node) |
 | `SPRING_DATASOURCE_USERNAME` | Yes | PostgreSQL user |
 | `SPRING_DATASOURCE_PASSWORD` | Yes | PostgreSQL password |
-| `MONGO_URI` | No* | Same name as Node; **not** written by this Spring workflow (reserved / future) |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | No* | Same name as Node; **not** written by this Spring workflow (reserved / future) |
-| `API_FOOTBALL_KEY` | No* | Same name as Node; **not** written by this Spring workflow (reserved / future) |
-
-\*Optional Node-named secrets are ignored unless you extend the CD workflow env writer.
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Strongly recommended | Same full JSON secret as TRWM-backend; merged into Cloud Run when set. Without it, `/api/users/*` cannot verify tokens. |
+| `MONGO_URI` | No | Not used by Spring CD env file |
+| `API_FOOTBALL_KEY` | No | Not used by Spring CD env file |
 
 ### 1.2 Secrets or Variables (Secrets take precedence, then Variables — same as Node)
 

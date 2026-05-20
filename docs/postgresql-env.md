@@ -1,5 +1,7 @@
 # PostgreSQL (Cloud SQL public IP) — database, tables, and env vars
 
+User HTTP routes under **`/api/users/*`** match **TRWM-backend** and require **`FIREBASE_SERVICE_ACCOUNT_JSON`** (see [google-cloud-run.md](google-cloud-run.md) for Cloud Run).
+
 ## 1. Create the database in Cloud SQL (once)
 
 Hibernate **does not** create the PostgreSQL *database* (catalog) for you — only **tables** inside an existing database.

@@ -14,8 +14,10 @@
 #   CLOUD_RUN_SERVICE    Cloud Run service name
 #   DOCKERHUB_REPO       Docker Hub image repository name (defaults to dwsc-backend)
 #
-# Optional (same names as Node; not used by Spring runtime unless you extend the env writer):
-#   MONGO_URI, FIREBASE_SERVICE_ACCOUNT_JSON, API_FOOTBALL_KEY
+# Optional (same names as Node):
+#   MONGO_URI — not used by Spring CD env file
+#   API_FOOTBALL_KEY — not used by Spring CD env file
+#   FIREBASE_SERVICE_ACCOUNT_JSON — merged into Cloud Run when set (required for /api/users/* in production)
 #
 # Secrets merged into Cloud Run each deploy (JSON file — same pattern as Node's write-cloudrun-env.js):
 #   SPRING_DATASOURCE_URL       JDBC URL (e.g. jdbc:postgresql://IP:5432/dwsc?sslmode=require)
@@ -58,7 +60,7 @@ jobs:
           cache: maven
 
       - name: Run tests
-        run: mvn -B verify
+        run: mvn -B verify -Dspring.profiles.active=test
 
   deploy:
     name: Deploy to Cloud Run
@@ -113,23 +115,35 @@ jobs:
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
           python3 << 'PY'
           import json, os, sys
 
-          keys = (
+          required = (
               "SPRING_DATASOURCE_URL",
               "SPRING_DATASOURCE_USERNAME",
               "SPRING_DATASOURCE_PASSWORD",
           )
           out = {}
-          for k in keys:
+          for k in required:
               v = (os.environ.get(k) or "").strip()
               if not v:
-                  print(f"::error::{k} is empty. Add repository Actions secret {k} (same name Spring Boot expects).")
+                  print(f"::error::{k} is empty. Add repository Actions secret {k}.")
                   sys.exit(1)
               out[k] = v
+
+          fb = (os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON") or "").strip()
+          if fb:
+              try:
+                  json.loads(fb)
+              except json.JSONDecodeError as e:
+                  print(f"::error::FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: {e}")
+                  sys.exit(1)
+              out["FIREBASE_SERVICE_ACCOUNT_JSON"] = fb
+          else:
+              print("::warning::FIREBASE_SERVICE_ACCOUNT_JSON is not set. User routes will fail until you add the same secret as TRWM-backend.")
 
           with open("cloudrun-env.json", "w", encoding="utf-8") as f:
               json.dump(out, f)
