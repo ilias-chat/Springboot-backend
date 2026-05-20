@@ -11,7 +11,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(
+        properties =
+                "spring.autoconfigure.exclude="
+                        + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration"
+)
 @AutoConfigureMockMvc
 class DwscBackendApplicationTests {
 
@@ -20,7 +25,7 @@ class DwscBackendApplicationTests {
 
     @Test
     void contextLoads() {
-        // empty web app
+        // JPA excluded so CI runs without PostgreSQL
     }
 
     @Test

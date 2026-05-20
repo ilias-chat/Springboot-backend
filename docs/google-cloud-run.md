@@ -20,11 +20,14 @@ Your app listens on **`PORT`** (Cloud Run sets this automatically). `application
 | `DOCKERHUB_USERNAME` | Yes | Docker Hub user or org |
 | `DOCKERHUB_TOKEN` | Yes | Docker Hub access token (read & write) |
 | `GCP_SA_KEY` | Yes | Full JSON key for a GCP service account that can deploy Cloud Run |
-| `MONGO_URI` | No* | Same name as Node; **not** consumed by the current Spring CD workflow (reserved / future) |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | No* | Same name as Node; **not** consumed by the current Spring CD workflow (reserved / future) |
-| `API_FOOTBALL_KEY` | No* | Same name as Node; **not** consumed by the current Spring CD workflow (reserved / future) |
+| `SPRING_DATASOURCE_URL` | Yes | JDBC URL (merged into Cloud Run each deploy via `cloudrun-env.json`, same pattern as Node) |
+| `SPRING_DATASOURCE_USERNAME` | Yes | PostgreSQL user |
+| `SPRING_DATASOURCE_PASSWORD` | Yes | PostgreSQL password |
+| `MONGO_URI` | No* | Same name as Node; **not** written by this Spring workflow (reserved / future) |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | No* | Same name as Node; **not** written by this Spring workflow (reserved / future) |
+| `API_FOOTBALL_KEY` | No* | Same name as Node; **not** written by this Spring workflow (reserved / future) |
 
-\*You can define these in the same repo or org for consistency with the Node project; add a `write-cloudrun-env`–style step later if you want them merged into Cloud Run on each deploy (Node does this via `TRWM-backend/scripts/write-cloudrun-env.js`).
+\*Optional Node-named secrets are ignored unless you extend the CD workflow env writer.
 
 ### 1.2 Secrets or Variables (Secrets take precedence, then Variables — same as Node)
 
@@ -50,14 +53,15 @@ Enable the **Cloud Run API** for the project if it is not already enabled.
 
 ## 3. Runtime configuration on Cloud Run (environment variables)
 
-The CD workflow does **not** pass an `env_vars_file` today (unlike Node, which merges `cloudrun-env.json`). Configure the service in the **Cloud Console** (or add a deploy step later), for example when you add PostgreSQL:
+On each deploy, **CD** builds `cloudrun-env.json` from the **`SPRING_DATASOURCE_*`** repository secrets (Python `json.dump`, same idea as Node’s `write-cloudrun-env.js`) and passes it to **`deploy-cloudrun`** with **`env_vars_update_strategy: merge`**, so Cloud Run gets DB settings without baking them into the image.
 
-| Variable | Notes |
-|----------|--------|
-| `SPRING_DATASOURCE_URL` | JDBC URL |
-| `SPRING_DATASOURCE_USERNAME` | DB user |
-| `SPRING_DATASOURCE_PASSWORD` | Prefer Secret Manager |
-| `SPRING_PROFILES_ACTIVE` | e.g. `prod` |
+You can still add variables in the **Cloud Console** (e.g. `SPRING_PROFILES_ACTIVE`, `DDL_AUTO`). For stricter security, consider **Secret Manager** for the DB password instead of a GitHub secret.
+
+| Variable | Set by CD from GitHub secret |
+|----------|------------------------------|
+| `SPRING_DATASOURCE_URL` | Yes |
+| `SPRING_DATASOURCE_USERNAME` | Yes |
+| `SPRING_DATASOURCE_PASSWORD` | Yes |
 
 ---
 
@@ -84,6 +88,7 @@ docker run --rm -p 8080:8080 -e PORT=8080 dwsc-backend:local
 | Docker Hub login fails | `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` |
 | GCP auth fails | `GCP_SA_KEY` is valid JSON for a SA with deploy permissions |
 | Deploy fails | `GCP_PROJECT_ID`, `GCP_REGION`, `CLOUD_RUN_SERVICE`; API enabled |
-| 502 / container exits | Cloud Run logs; app must listen on `PORT` |
+| CD fails at “Write Cloud Run env file” | `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` must be non-empty secrets |
+| 502 / container exits | Cloud Run logs; app must listen on `PORT`; DB reachable from Cloud Run (authorized networks / IP) |
 
 Official references: [Cloud Run](https://cloud.google.com/run/docs), [deploy-cloudrun action](https://github.com/google-github-actions/deploy-cloudrun).

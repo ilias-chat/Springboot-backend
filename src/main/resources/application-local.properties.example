@@ -1,0 +1,8 @@
+# Copy to: src/main/resources/application-local.properties (that file is gitignored).
+# Uncomment and set your Cloud SQL public IP, database name, user, and password.
+
+#spring.datasource.url=jdbc:postgresql://YOUR_CLOUD_SQL_PUBLIC_IP:5432/dwsc?sslmode=require
+#spring.datasource.username=dwsc_app
+#spring.datasource.password=your_password
+
+#spring.jpa.hibernate.ddl-auto=update

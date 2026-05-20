@@ -14,8 +14,13 @@
 #   CLOUD_RUN_SERVICE    Cloud Run service name
 #   DOCKERHUB_REPO       Docker Hub image repository name (defaults to dwsc-backend)
 #
-# Optional (same names as Node; not written to Cloud Run by this workflow until you add env merge):
+# Optional (same names as Node; not used by Spring runtime unless you extend the env writer):
 #   MONGO_URI, FIREBASE_SERVICE_ACCOUNT_JSON, API_FOOTBALL_KEY
+#
+# Secrets merged into Cloud Run each deploy (JSON file — same pattern as Node's write-cloudrun-env.js):
+#   SPRING_DATASOURCE_URL       JDBC URL (e.g. jdbc:postgresql://IP:5432/dwsc?sslmode=require)
+#   SPRING_DATASOURCE_USERNAME  DB user
+#   SPRING_DATASOURCE_PASSWORD  DB password
 #
 # Spring listens on PORT; Cloud Run is deployed with --port=8080.
 
@@ -103,6 +108,33 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
+      - name: Write Cloud Run env file (JSON — Spring datasource; same idea as Node write-cloudrun-env.js)
+        env:
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python3 << 'PY'
+          import json, os, sys
+
+          keys = (
+              "SPRING_DATASOURCE_URL",
+              "SPRING_DATASOURCE_USERNAME",
+              "SPRING_DATASOURCE_PASSWORD",
+          )
+          out = {}
+          for k in keys:
+              v = (os.environ.get(k) or "").strip()
+              if not v:
+                  print(f"::error::{k} is empty. Add repository Actions secret {k} (same name Spring Boot expects).")
+                  sys.exit(1)
+              out[k] = v
+
+          with open("cloudrun-env.json", "w", encoding="utf-8") as f:
+              json.dump(out, f)
+          PY
+
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
@@ -110,4 +142,6 @@ jobs:
           region: ${{ env.GCP_REGION_NAME }}
           project_id: ${{ env.GCP_PROJECT }}
           image: ${{ env.DOCKERHUB_USER }}/${{ env.DOCKERHUB_REPO_NAME }}:${{ github.sha }}
+          env_vars_file: cloudrun-env.json
+          env_vars_update_strategy: merge
           flags: --allow-unauthenticated --port=8080
