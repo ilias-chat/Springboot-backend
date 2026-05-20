@@ -16,6 +16,8 @@ Endpoints:
 - `http://localhost:8080/` → `{"message":"Hello World"}`
 - `http://localhost:8080/health` → `ok`
 - **`/api/users/*`** — Bearer Firebase ID token; same paths and JSON shapes as TRWM-backend.
+- **`/api/docs`** — Swagger UI (same path as TRWM-backend).
+- **`/api/docs.json`** — OpenAPI 3 JSON spec.
 
 ## Environment variables
 
