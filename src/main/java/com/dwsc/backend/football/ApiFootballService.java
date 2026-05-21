@@ -107,9 +107,7 @@ public class ApiFootballService {
                         venueLabel = pt.venueName();
                     }
                 } catch (ApiFootballException e) {
-                    if (e.getStatusCodeValue() == 422
-                            && e.getReason() != null
-                            && e.getReason().toLowerCase().contains("coordinate")) {
+                    if (isMissingVenueCoordinatesError(e)) {
                         coords = geocodeNominatim(teamRow.city(), teamRow.country(), teamRow.venueName());
                     } else {
                         throw e;
@@ -121,9 +119,30 @@ public class ApiFootballService {
         return new TeamStadiumContext(teamRow.teamName(), leagueName, venueLabel, location);
     }
 
+    /**
+     * Squad picker preview — does not require stadium coordinates (unlike import).
+     * Matches TRWM UX: {@code GET /api/admin/squad-players} only needs player rows from API-Football.
+     */
+    public ImportPayloadResult buildSquadPreview(int leagueId, int teamId, int season) {
+        requireConfigured();
+        String cacheKey = leagueId + ":" + teamId + ":" + season + ":preview";
+        CacheEntry<ImportPayloadResult> cached = importCache.get(cacheKey);
+        if (cached != null && Instant.now().toEpochMilli() - cached.at() < CACHE_TTL_MS) {
+            return cached.data();
+        }
+        String leagueName = assertLeagueBelongsToTeam(teamId, leagueId, season);
+        TeamRow teamRow = fetchTeam(teamId);
+        List<JsonNode> rawPlayers = fetchAllPlayersPages(teamId, season);
+        List<ImportPlayerDoc> players = mapImportRows(rawPlayers, teamRow.teamName(), leagueName, teamRow.venueName(), null);
+        ImportPayloadResult result =
+                new ImportPayloadResult(players, teamRow.teamName(), leagueName, teamRow.venueName());
+        importCache.put(cacheKey, new CacheEntry<>(Instant.now().toEpochMilli(), result));
+        return result;
+    }
+
     public ImportPayloadResult buildImportPayloads(int leagueId, int teamId, int season) {
         requireConfigured();
-        String cacheKey = leagueId + ":" + teamId + ":" + season;
+        String cacheKey = leagueId + ":" + teamId + ":" + season + ":import";
         CacheEntry<ImportPayloadResult> cached = importCache.get(cacheKey);
         if (cached != null && Instant.now().toEpochMilli() - cached.at() < CACHE_TTL_MS) {
             return cached.data();
@@ -135,13 +154,8 @@ public class ApiFootballService {
                     422);
         }
         List<JsonNode> rawPlayers = fetchAllPlayersPages(teamId, season);
-        List<ImportPlayerDoc> players = new ArrayList<>();
-        for (JsonNode row : rawPlayers) {
-            ImportPlayerDoc doc = mapImportRow(row, ctx.teamName(), ctx.leagueName(), ctx.venueName(), ctx.location());
-            if (doc != null) {
-                players.add(doc);
-            }
-        }
+        List<ImportPlayerDoc> players =
+                mapImportRows(rawPlayers, ctx.teamName(), ctx.leagueName(), ctx.venueName(), ctx.location());
         ImportPayloadResult result = new ImportPayloadResult(players, ctx.teamName(), ctx.leagueName(), ctx.venueName());
         importCache.put(cacheKey, new CacheEntry<>(Instant.now().toEpochMilli(), result));
         return result;
@@ -199,16 +213,10 @@ public class ApiFootballService {
         }
         try {
             JsonNode data = objectMapper.readTree(body);
-            JsonNode errors = data.path("errors");
-            if (errors.isArray() && !errors.isEmpty()) {
-                StringBuilder msg = new StringBuilder();
-                for (JsonNode e : errors) {
-                    if (!msg.isEmpty()) {
-                        msg.append("; ");
-                    }
-                    msg.append(e.path("message").asText(String.valueOf(e)));
-                }
-                throw new ApiFootballException(msg.toString(), 422);
+            String errorMsg = formatApiFootballErrors(data.path("errors"));
+            if (!errorMsg.isBlank()) {
+                int status = inferStatusFromApiFootballErrors(errorMsg);
+                throw new ApiFootballException(errorMsg, status);
             }
             return data;
         } catch (ApiFootballException e) {
@@ -327,6 +335,69 @@ public class ApiFootballService {
         } catch (Exception e) {
             throw new ApiFootballException("Geocoding failed", 502);
         }
+    }
+
+    private static boolean isMissingVenueCoordinatesError(ApiFootballException e) {
+        return e.getStatusCodeValue() == 422
+                && e.getReason() != null
+                && e.getReason().toLowerCase().contains("no coordinates");
+    }
+
+    /** API-Football returns {@code errors} as an array or object (e.g. {@code {"token":"..."}}). */
+    static String formatApiFootballErrors(JsonNode errors) {
+        if (errors == null || errors.isMissingNode() || errors.isNull()) {
+            return "";
+        }
+        if (errors.isArray()) {
+            StringBuilder msg = new StringBuilder();
+            for (JsonNode e : errors) {
+                if (!msg.isEmpty()) {
+                    msg.append("; ");
+                }
+                msg.append(e.path("message").asText(String.valueOf(e)));
+            }
+            return msg.toString();
+        }
+        if (errors.isObject()) {
+            StringBuilder msg = new StringBuilder();
+            errors.fields()
+                    .forEachRemaining(
+                            entry -> {
+                                if (!msg.isEmpty()) {
+                                    msg.append("; ");
+                                }
+                                msg.append(entry.getKey()).append(": ").append(entry.getValue().asText());
+                            });
+            return msg.toString();
+        }
+        return errors.asText("");
+    }
+
+    private static int inferStatusFromApiFootballErrors(String message) {
+        String lower = message.toLowerCase();
+        if (lower.contains("token") || lower.contains("api key") || lower.contains("invalid key")) {
+            return HttpStatus.SERVICE_UNAVAILABLE.value();
+        }
+        if (lower.contains("rate limit") || lower.contains("requests")) {
+            return 429;
+        }
+        return 422;
+    }
+
+    private List<ImportPlayerDoc> mapImportRows(
+            List<JsonNode> rawPlayers,
+            String teamName,
+            String leagueName,
+            String venueName,
+            GeoJsonPoint location) {
+        List<ImportPlayerDoc> players = new ArrayList<>();
+        for (JsonNode row : rawPlayers) {
+            ImportPlayerDoc doc = mapImportRow(row, teamName, leagueName, venueName, location);
+            if (doc != null) {
+                players.add(doc);
+            }
+        }
+        return players;
     }
 
     private List<JsonNode> fetchAllPlayersPages(int teamId, int season) {

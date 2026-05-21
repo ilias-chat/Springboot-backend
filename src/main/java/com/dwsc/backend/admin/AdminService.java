@@ -63,7 +63,7 @@ public class AdminService {
 
     public FootballSquadPlayersResponse listSquadPlayers(int leagueId, int teamId, int season) {
         try {
-            ImportPayloadResult payload = apiFootballService.buildImportPayloads(leagueId, teamId, season);
+            ImportPayloadResult payload = apiFootballService.buildSquadPreview(leagueId, teamId, season);
             List<FootballSquadPlayerOption> data =
                     payload.players().stream()
                             .map(

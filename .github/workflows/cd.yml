@@ -16,7 +16,7 @@
 #
 # Optional (same names as Node):
 #   MONGO_URI — not used by Spring CD env file
-#   API_FOOTBALL_KEY — not used by Spring CD env file
+#   API_FOOTBALL_KEY — merged into Cloud Run when set (same as TRWM-backend)
 #   FIREBASE_SERVICE_ACCOUNT_JSON — merged into Cloud Run when set (required for /api/users/* in production)
 #
 # Secrets merged into Cloud Run each deploy (JSON file — same pattern as Node's write-cloudrun-env.js):

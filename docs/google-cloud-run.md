@@ -25,7 +25,7 @@ Your app listens on **`PORT`** (Cloud Run sets this automatically). `application
 | `SPRING_DATASOURCE_PASSWORD` | Yes | PostgreSQL password |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Strongly recommended | Same full JSON secret as TRWM-backend; merged into Cloud Run when set. Without it, `/api/users/*` cannot verify tokens. |
 | `MONGO_URI` | No | Not used by Spring CD env file |
-| `API_FOOTBALL_KEY` | No | Not used by Spring CD env file |
+| `API_FOOTBALL_KEY` | Strongly recommended | Same secret as TRWM-backend; merged into Cloud Run via `cloudrun-env.json` (key only, no `API_FOOTBALL_KEY=` prefix) |
 
 ### 1.2 Secrets or Variables (Secrets take precedence, then Variables — same as Node)
 
