@@ -136,7 +136,7 @@ public class ApiFootballService {
         }
         String leagueName = assertLeagueBelongsToTeam(teamId, leagueId, season);
         TeamRow teamRow = fetchTeam(teamId);
-        List<JsonNode> rawPlayers = fetchAllPlayersPages(teamId, season);
+        List<JsonNode> rawPlayers = fetchTeamSquadPlayerRows(teamId);
         List<ImportPlayerDoc> players = mapImportRows(rawPlayers, teamRow.teamName(), leagueName, teamRow.venueName(), null);
         ImportPayloadResult result =
                 new ImportPayloadResult(players, teamRow.teamName(), leagueName, teamRow.venueName());
