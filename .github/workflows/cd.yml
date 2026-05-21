@@ -147,6 +147,9 @@ jobs:
               print("::warning::FIREBASE_SERVICE_ACCOUNT_JSON is not set. User routes will fail until you add the same secret as TRWM-backend.")
 
           af = (os.environ.get("API_FOOTBALL_KEY") or "").strip()
+          if af.upper().startswith("API_FOOTBALL_KEY="):
+              af = af.split("=", 1)[1].strip()
+              print("::warning::API_FOOTBALL_KEY secret included 'API_FOOTBALL_KEY=' prefix; stripped for Cloud Run.")
           if af:
               out["API_FOOTBALL_KEY"] = af
           else:

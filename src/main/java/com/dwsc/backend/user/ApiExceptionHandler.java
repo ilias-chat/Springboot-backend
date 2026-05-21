@@ -2,6 +2,8 @@ package com.dwsc.backend.user;
 
 import com.dwsc.backend.api.dto.ErrorResponse;
 import com.dwsc.backend.football.ApiFootballException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -10,6 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
     @ExceptionHandler(ApiFootballException.class)
     public ResponseEntity<ErrorResponse> handleApiFootball(ApiFootballException ex) {
@@ -30,6 +34,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
+        log.error("Unhandled exception", ex);
         return ResponseEntity.internalServerError().body(new ErrorResponse("Internal Server Error"));
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,7 +40,7 @@ public class ApiFootballService {
             @Value("${API_FOOTBALL_KEY:}") String apiKey,
             @Value("${api-football.base-url:" + DEFAULT_BASE + "}") String baseUrl,
             ObjectMapper objectMapper) {
-        this.apiKey = apiKey != null ? apiKey.trim() : "";
+        this.apiKey = normalizeApiKey(apiKey);
         this.baseUrl = baseUrl.replaceAll("/$", "");
         this.objectMapper = objectMapper;
         this.restClient =
@@ -164,18 +165,16 @@ public class ApiFootballService {
                     query.forEach((k, v) -> b.queryParam(k, String.valueOf(v)));
                     return b.build();
                 });
-        var response = spec.retrieve().toEntity(String.class);
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            int status = response.getStatusCode().value();
-            if (status == 429) {
-                throw new ApiFootballException(
-                        "API-Football HTTP 429. API-Football rate limit reached. Wait a minute and try again.",
-                        429);
-            }
-            throw new ApiFootballException("API-Football HTTP " + status, status >= 400 && status < 600 ? status : 502);
+        String body;
+        try {
+            body = spec.retrieve().body(String.class);
+        } catch (RestClientResponseException e) {
+            throw toApiFootballException(e);
+        } catch (Exception e) {
+            throw new ApiFootballException("API-Football request failed: " + e.getMessage(), HttpStatus.BAD_GATEWAY.value());
         }
         try {
-            JsonNode data = objectMapper.readTree(response.getBody());
+            JsonNode data = objectMapper.readTree(body);
             JsonNode errors = data.path("errors");
             if (errors.isArray() && !errors.isEmpty()) {
                 StringBuilder msg = new StringBuilder();
@@ -193,6 +192,37 @@ public class ApiFootballService {
         } catch (Exception e) {
             throw new ApiFootballException("Failed to parse API-Football response", 502);
         }
+    }
+
+    private static ApiFootballException toApiFootballException(RestClientResponseException e) {
+        int status = e.getStatusCode().value();
+        if (status == 429) {
+            return new ApiFootballException(
+                    "API-Football HTTP 429. API-Football rate limit reached. Wait a minute and try again.",
+                    429);
+        }
+        if (status == 401 || status == 403) {
+            return new ApiFootballException(
+                    "API-Football rejected the API key (HTTP "
+                            + status
+                            + "). Set GitHub secret API_FOOTBALL_KEY to the key only (no API_FOOTBALL_KEY= prefix).",
+                    HttpStatus.SERVICE_UNAVAILABLE.value());
+        }
+        int mapped = status >= 400 && status < 600 ? status : HttpStatus.BAD_GATEWAY.value();
+        return new ApiFootballException("API-Football HTTP " + status, mapped);
+    }
+
+    /** Strips accidental {@code API_FOOTBALL_KEY=} prefix from env/secret paste mistakes. */
+    static String normalizeApiKey(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String trimmed = raw.trim();
+        final String prefix = "API_FOOTBALL_KEY=";
+        if (trimmed.regionMatches(true, 0, prefix, 0, prefix.length())) {
+            return trimmed.substring(prefix.length()).trim();
+        }
+        return trimmed;
     }
 
     private String assertLeagueBelongsToTeam(int teamId, int leagueId, int season) {

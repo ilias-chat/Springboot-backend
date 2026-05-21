@@ -22,6 +22,10 @@ With default **`DDL_AUTO=update`**, Hibernate creates/updates these tables on st
 | `players` | `models/Player.js` |
 
 If **`GET /api/players`** returns 500 and Cloud Run logs show `function lower(bytea) does not exist`, text columns were created as **bytea** (legacy import). Run [scripts/postgresql-fix-player-text-columns.sql](../scripts/postgresql-fix-player-text-columns.sql) on the database, then redeploy is optional (queries also cast to `text` in code).
+
+## API-Football (`/api/admin/leagues`, etc.)
+
+GitHub Actions secret **`API_FOOTBALL_KEY`** must be **only the key** (e.g. `cbb851f8…`), not `API_FOOTBALL_KEY=cbb851f8…`. A bad value makes API-Football return HTTP 401/403; the app maps that to a clear error instead of a generic 500.
 | `player_comments` | embedded `comments[]` in Mongo → relational rows |
 
 **Production:** set `DDL_AUTO=validate` (or `none`) and manage schema with **Flyway** / **Liquibase** instead of `update`.
