@@ -72,24 +72,48 @@ public class ApiFootballService {
     public record ImportPayloadResult(List<ImportPlayerDoc> players, String teamName, String leagueName, String venueName) {}
 
     public TeamStadiumContext resolveTeamStadiumContext(int leagueId, int teamId, int season) {
+        return resolveTeamStadiumContext(leagueId, teamId, season, false);
+    }
+
+    /**
+     * Resolves team/league/venue names and optional stadium coordinates.
+     *
+     * @param allowMissingStadiumCoords when true (client sends device {@code lat}/{@code lng}),
+     *     missing venue/geocode coords return {@code location=null} instead of 422.
+     */
+    public TeamStadiumContext resolveTeamStadiumContext(
+            int leagueId, int teamId, int season, boolean allowMissingStadiumCoords) {
         requireConfigured();
         String leagueName = assertLeagueBelongsToTeam(teamId, leagueId, season);
         TeamRow teamRow = fetchTeam(teamId);
         String venueLabel = teamRow.venueName();
         Coords coords = teamRow.embeddedCoords();
         if (coords == null && teamRow.venueId() != null) {
-            try {
-                VenuePoint pt = fetchVenuePoint(teamRow.venueId());
-                coords = new Coords(pt.lat(), pt.lng());
-                if (pt.venueName() != null && !pt.venueName().isBlank()) {
-                    venueLabel = pt.venueName();
+            if (allowMissingStadiumCoords) {
+                try {
+                    VenuePoint pt = fetchVenuePoint(teamRow.venueId());
+                    coords = new Coords(pt.lat(), pt.lng());
+                    if (pt.venueName() != null && !pt.venueName().isBlank()) {
+                        venueLabel = pt.venueName();
+                    }
+                } catch (ApiFootballException ignored) {
+                    coords = null;
                 }
-            } catch (ApiFootballException e) {
-                if (e.getStatusCodeValue() == 422 && e.getReason() != null && e.getReason().contains("coordinates")) {
-                    Coords geo = geocodeNominatim(teamRow.city(), teamRow.country(), teamRow.venueName());
-                    coords = geo;
-                } else {
-                    throw e;
+            } else {
+                try {
+                    VenuePoint pt = fetchVenuePoint(teamRow.venueId());
+                    coords = new Coords(pt.lat(), pt.lng());
+                    if (pt.venueName() != null && !pt.venueName().isBlank()) {
+                        venueLabel = pt.venueName();
+                    }
+                } catch (ApiFootballException e) {
+                    if (e.getStatusCodeValue() == 422
+                            && e.getReason() != null
+                            && e.getReason().toLowerCase().contains("coordinate")) {
+                        coords = geocodeNominatim(teamRow.city(), teamRow.country(), teamRow.venueName());
+                    } else {
+                        throw e;
+                    }
                 }
             }
         }

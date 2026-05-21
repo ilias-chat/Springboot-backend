@@ -156,21 +156,22 @@ public class PlayerService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "image must be a valid base64 photo under 2MB");
         }
 
+        boolean useDeviceLocation = hasDeviceCoords(body.lat(), body.lng());
         TeamStadiumContext ctx;
         try {
-            ctx = apiFootballService.resolveTeamStadiumContext(body.leagueId(), body.teamId(), body.season());
+            ctx =
+                    apiFootballService.resolveTeamStadiumContext(
+                            body.leagueId(), body.teamId(), body.season(), useDeviceLocation);
         } catch (ApiFootballException e) {
             throw e;
         }
 
-        GeoJsonPoint location = ctx.location();
-        if (location == null && hasDeviceCoords(body.lat(), body.lng())) {
-            location = new GeoJsonPoint("Point", List.of(body.lng(), body.lat()));
-        }
+        GeoJsonPoint location = resolvePlayerLocation(ctx.location(), body.lat(), body.lng(), useDeviceLocation);
         if (location == null) {
             throw new ResponseStatusException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Could not resolve stadium coordinates for this team. Enable location on your device and try again.");
+                    "Could not resolve stadium coordinates for this team. "
+                            + "Send lat and lng in the request body (device GPS), or enable location and try again.");
         }
 
         if (playerRepository.existsByNameIgnoreCaseAndTeamIgnoreCase(trimmedName, ctx.teamName())) {
@@ -385,6 +386,18 @@ public class PlayerService {
                 && lat <= 90
                 && lng >= -180
                 && lng <= 180;
+    }
+
+    /** Stadium coords from API-Football when present; otherwise device GPS when {@code useDeviceLocation}. */
+    static GeoJsonPoint resolvePlayerLocation(
+            GeoJsonPoint stadiumLocation, Double lat, Double lng, boolean useDeviceLocation) {
+        if (stadiumLocation != null) {
+            return stadiumLocation;
+        }
+        if (useDeviceLocation) {
+            return new GeoJsonPoint("Point", List.of(lng, lat));
+        }
+        return null;
     }
 
     private static double roundCoord(double n, int decimals) {

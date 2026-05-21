@@ -11,6 +11,12 @@ public record CreatePlayerRequest(
         Integer leagueId,
         Integer teamId,
         Integer season,
-        Double lat,
-        Double lng,
+        @Schema(
+                        description =
+                                "Device latitude (required when API-Football has no stadium coordinates). GeoJSON order: lng, lat on stored Point.")
+                Double lat,
+        @Schema(
+                        description =
+                                "Device longitude (required when API-Football has no stadium coordinates).")
+                Double lng,
         String image) {}
