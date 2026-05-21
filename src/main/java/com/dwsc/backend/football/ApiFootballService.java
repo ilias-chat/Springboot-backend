@@ -5,6 +5,7 @@ import com.dwsc.backend.api.dto.FootballTeamOption;
 import com.dwsc.backend.model.GeoJsonPoint;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import org.springframework.web.client.RestClientResponseException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +31,8 @@ public class ApiFootballService {
     private static final List<Integer> TOP_LEAGUE_IDS =
             List.of(39, 140, 135, 78, 61, 2, 3, 88, 94, 40);
     private static final long CACHE_TTL_MS = 5 * 60 * 1000;
+    /** API-Football free tier rejects {@code page} &gt; 3 on {@code /players}. */
+    private static final int FREE_PLAN_MAX_PLAYERS_PAGE = 3;
 
     private final String apiKey;
     private final String baseUrl;
@@ -153,7 +157,7 @@ public class ApiFootballService {
                     "Could not resolve stadium coordinates (no coords on team venue, and no venue id for /venues or geocode)",
                     422);
         }
-        List<JsonNode> rawPlayers = fetchAllPlayersPages(teamId, season);
+        List<JsonNode> rawPlayers = fetchSquadWithSeasonStats(teamId, season);
         List<ImportPlayerDoc> players =
                 mapImportRows(rawPlayers, ctx.teamName(), ctx.leagueName(), ctx.venueName(), ctx.location());
         ImportPayloadResult result = new ImportPayloadResult(players, ctx.teamName(), ctx.leagueName(), ctx.venueName());
@@ -400,11 +404,54 @@ public class ApiFootballService {
         return players;
     }
 
-    private List<JsonNode> fetchAllPlayersPages(int teamId, int season) {
+    /**
+     * Full current squad via {@code /players/squads} (single request, no page limit).
+     * Rows are shaped like {@code /players} entries for {@link #mapImportRow}.
+     */
+    private List<JsonNode> fetchTeamSquadPlayerRows(int teamId) {
+        JsonNode data = request("/players/squads", Map.of("team", teamId));
+        JsonNode response = data.path("response");
+        if (!response.isArray() || response.isEmpty()) {
+            return List.of();
+        }
+        JsonNode players = response.get(0).path("players");
+        if (!players.isArray()) {
+            return List.of();
+        }
+        List<JsonNode> rows = new ArrayList<>();
+        for (JsonNode p : players) {
+            if (!p.has("id")) {
+                continue;
+            }
+            ObjectNode row = objectMapper.createObjectNode();
+            ObjectNode player = objectMapper.createObjectNode();
+            player.put("id", p.path("id").asInt());
+            if (p.has("name")) {
+                player.put("name", p.path("name").asText());
+            }
+            if (p.has("photo") && !p.path("photo").isNull()) {
+                String photo = p.path("photo").asText(null);
+                if (photo != null && !photo.isBlank() && !"null".equalsIgnoreCase(photo)) {
+                    player.put("photo", photo);
+                }
+            }
+            if (p.has("position")) {
+                player.put("position", p.path("position").asText());
+            }
+            row.set("player", player);
+            row.set("statistics", objectMapper.createArrayNode());
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    /** {@code /players?team&season} pages (capped for API-Football free plan). */
+    private List<JsonNode> fetchPlayersSeasonPages(int teamId, int season, int maxPage) {
         List<JsonNode> all = new ArrayList<>();
         int page = 1;
         int totalPages = 1;
-        while (page <= totalPages) {
+        int cap = Math.max(1, maxPage);
+        while (page <= totalPages && page <= cap) {
             JsonNode data = request("/players", Map.of("team", teamId, "season", season, "page", page));
             JsonNode chunk = data.path("response");
             if (chunk.isArray()) {
@@ -414,6 +461,38 @@ public class ApiFootballService {
             page++;
         }
         return all;
+    }
+
+    private List<JsonNode> fetchSquadWithSeasonStats(int teamId, int season) {
+        List<JsonNode> squad = fetchTeamSquadPlayerRows(teamId);
+        List<JsonNode> seasonRows = fetchPlayersSeasonPages(teamId, season, FREE_PLAN_MAX_PLAYERS_PAGE);
+        if (!squad.isEmpty()) {
+            return mergeSquadWithSeasonStats(squad, seasonRows);
+        }
+        return seasonRows;
+    }
+
+    static List<JsonNode> mergeSquadWithSeasonStats(List<JsonNode> squadRows, List<JsonNode> seasonRows) {
+        Map<Integer, JsonNode> statsById = new HashMap<>();
+        for (JsonNode row : seasonRows) {
+            int id = row.path("player").path("id").asInt(-1);
+            if (id > 0) {
+                statsById.put(id, row);
+            }
+        }
+        List<JsonNode> merged = new ArrayList<>(squadRows.size());
+        for (JsonNode squad : squadRows) {
+            int id = squad.path("player").path("id").asInt(-1);
+            JsonNode seasonRow = statsById.get(id);
+            if (seasonRow != null && seasonRow.has("statistics")) {
+                ObjectNode copy = squad.deepCopy();
+                copy.set("statistics", seasonRow.get("statistics"));
+                merged.add(copy);
+            } else {
+                merged.add(squad);
+            }
+        }
+        return merged;
     }
 
     private ImportPlayerDoc mapImportRow(

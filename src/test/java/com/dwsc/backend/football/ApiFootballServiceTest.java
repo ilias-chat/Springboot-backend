@@ -1,5 +1,6 @@
 package com.dwsc.backend.football;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -30,5 +31,24 @@ class ApiFootballServiceTest {
         var errors = objectMapper.readTree("[{\"message\":\"Season not found\"}]");
         String msg = ApiFootballService.formatApiFootballErrors(errors);
         assertEquals("Season not found", msg);
+    }
+
+    @Test
+    void mergeSquadWithSeasonStats_attachesStatisticsFromSeasonRows() throws Exception {
+        var squad =
+                objectMapper.readTree(
+                        """
+                        [{"player":{"id":10,"name":"A"},"statistics":[]}]
+                        """);
+        var season =
+                objectMapper.readTree(
+                        """
+                        [{"player":{"id":10,"name":"A"},"statistics":[{"games":{"position":"Midfielder"}}]}]
+                        """);
+        var merged = ApiFootballService.mergeSquadWithSeasonStats(
+                objectMapper.readerForListOf(JsonNode.class).readValue(squad),
+                objectMapper.readerForListOf(JsonNode.class).readValue(season));
+        assertEquals(1, merged.size());
+        assertEquals("Midfielder", merged.get(0).path("statistics").get(0).path("games").path("position").asText());
     }
 }
