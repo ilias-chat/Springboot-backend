@@ -19,6 +19,8 @@ Endpoints:
 - **`/api/docs`** — Swagger UI (same path as TRWM-backend).
 - **`/api/docs.json`** — OpenAPI 3 JSON spec.
 
+On **Cloud Run**, `server.forward-headers-strategy=framework` ensures Swagger **Servers** uses `https://` (from `X-Forwarded-Proto`), so **Try it out** works when the UI is opened over HTTPS.
+
 ## Environment variables
 
 | Variable | Purpose |
