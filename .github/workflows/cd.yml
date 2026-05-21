@@ -116,6 +116,7 @@ jobs:
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: |
           set -euo pipefail
           python3 << 'PY'
@@ -144,6 +145,12 @@ jobs:
               out["FIREBASE_SERVICE_ACCOUNT_JSON"] = fb
           else:
               print("::warning::FIREBASE_SERVICE_ACCOUNT_JSON is not set. User routes will fail until you add the same secret as TRWM-backend.")
+
+          af = (os.environ.get("API_FOOTBALL_KEY") or "").strip()
+          if af:
+              out["API_FOOTBALL_KEY"] = af
+          else:
+              print("::warning::API_FOOTBALL_KEY is not set. Admin/API-Football routes will return 503 until you add the same secret as TRWM-backend.")
 
           with open("cloudrun-env.json", "w", encoding="utf-8") as f:
               json.dump(out, f)

@@ -37,7 +37,27 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
             return true;
         }
         String uri = request.getRequestURI();
-        return !uri.startsWith("/api/users");
+        if (uri.startsWith("/api/users") || uri.startsWith("/api/admin")) {
+            return false;
+        }
+        if (uri.startsWith("/api/players") && "GET".equalsIgnoreCase(request.getMethod())) {
+            return isPublicPlayerGet(uri);
+        }
+        return !uri.startsWith("/api/players");
+    }
+
+    /** Public GET routes — same as TRWM-backend playerRoutes (no auth middleware). */
+    private static boolean isPublicPlayerGet(String uri) {
+        if ("/api/players".equals(uri)
+                || "/api/players/search".equals(uri)
+                || "/api/players/nearby".equals(uri)) {
+            return true;
+        }
+        if (uri.matches("/api/players/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")) {
+            return true;
+        }
+        return uri.matches(
+                "/api/players/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/comments");
     }
 
     @Override

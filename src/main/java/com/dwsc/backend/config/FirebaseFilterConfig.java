@@ -16,7 +16,13 @@ public class FirebaseFilterConfig {
     public FilterRegistrationBean<FirebaseAuthFilter> firebaseAuthFilterRegistration(FirebaseAuthService firebaseAuthService) {
         var reg = new FilterRegistrationBean<>(new FirebaseAuthFilter(firebaseAuthService));
         reg.setOrder(Ordered.LOWEST_PRECEDENCE - 50);
-        reg.addUrlPatterns("/api/users", "/api/users/*");
+        reg.addUrlPatterns(
+                "/api/users",
+                "/api/users/*",
+                "/api/players",
+                "/api/players/*",
+                "/api/admin",
+                "/api/admin/*");
         return reg;
     }
 }
