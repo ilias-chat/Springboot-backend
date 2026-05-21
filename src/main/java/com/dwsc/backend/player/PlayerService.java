@@ -78,8 +78,12 @@ public class PlayerService {
         String teamParam = blankToNull(team);
         String positionParam = blankToNull(position);
         String qParam = blankToNull(q);
-        Page<Player> result =
-                playerRepository.findFiltered(teamParam, positionParam, qParam, regStart, regEnd, pageable);
+        Page<Player> result;
+        if (teamParam == null && positionParam == null && qParam == null && regStart == null) {
+            result = playerRepository.findAll(pageable);
+        } else {
+            result = playerRepository.findFiltered(teamParam, positionParam, qParam, regStart, regEnd, pageable);
+        }
         return toPaginated(result, page, limit);
     }
 

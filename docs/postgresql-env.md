@@ -20,6 +20,8 @@ With default **`DDL_AUTO=update`**, Hibernate creates/updates these tables on st
 |--------|---------|
 | `users` | `models/User.js` |
 | `players` | `models/Player.js` |
+
+If **`GET /api/players`** returns 500 and Cloud Run logs show `function lower(bytea) does not exist`, text columns were created as **bytea** (legacy import). Run [scripts/postgresql-fix-player-text-columns.sql](../scripts/postgresql-fix-player-text-columns.sql) on the database, then redeploy is optional (queries also cast to `text` in code).
 | `player_comments` | embedded `comments[]` in Mongo → relational rows |
 
 **Production:** set `DDL_AUTO=validate` (or `none`) and manage schema with **Flyway** / **Liquibase** instead of `update`.

@@ -19,20 +19,48 @@ public interface PlayerRepository extends JpaRepository<Player, UUID> {
     @Query("SELECT DISTINCT p FROM Player p LEFT JOIN FETCH p.comments WHERE p.id = :id")
     Optional<Player> findByIdWithComments(@Param("id") UUID id);
 
-    @Query("SELECT p FROM Player p WHERE lower(p.name) LIKE lower(concat('%', :q, '%'))")
+    /**
+     * Cast to text before lower() so PostgreSQL works when legacy columns are still bytea
+     * (Cloud SQL shared with Node/Mongo migration). Prefer scripts/postgresql-fix-player-text-columns.sql.
+     */
+    @Query(
+            value =
+                    """
+                    SELECT p.* FROM players p
+                    WHERE lower(cast(p.name as text)) LIKE lower(concat('%', :q, '%'))
+                    """,
+            countQuery =
+                    """
+                    SELECT count(*) FROM players p
+                    WHERE lower(cast(p.name as text)) LIKE lower(concat('%', :q, '%'))
+                    """,
+            nativeQuery = true)
     Page<Player> searchByName(@Param("q") String q, Pageable pageable);
 
     @Query(
-            """
-            SELECT p FROM Player p
-            WHERE (:team IS NULL OR lower(p.team) LIKE lower(concat('%', :team, '%')))
-              AND (:position IS NULL OR lower(p.position) LIKE lower(concat('%', :position, '%')))
-              AND (:q IS NULL OR lower(p.name) LIKE lower(concat('%', :q, '%'))
-                   OR lower(p.team) LIKE lower(concat('%', :q, '%'))
-                   OR lower(p.league) LIKE lower(concat('%', :q, '%')))
-              AND (:regStart IS NULL OR p.registrationDate >= :regStart)
-              AND (:regEnd IS NULL OR p.registrationDate <= :regEnd)
-            """)
+            value =
+                    """
+                    SELECT p.* FROM players p
+                    WHERE (:team IS NULL OR lower(cast(p.team as text)) LIKE lower(concat('%', :team, '%')))
+                      AND (:position IS NULL OR lower(cast(p.position as text)) LIKE lower(concat('%', :position, '%')))
+                      AND (:q IS NULL OR lower(cast(p.name as text)) LIKE lower(concat('%', :q, '%'))
+                           OR lower(cast(p.team as text)) LIKE lower(concat('%', :q, '%'))
+                           OR lower(cast(p.league as text)) LIKE lower(concat('%', :q, '%')))
+                      AND (:regStart IS NULL OR p.registration_date >= :regStart)
+                      AND (:regEnd IS NULL OR p.registration_date <= :regEnd)
+                    """,
+            countQuery =
+                    """
+                    SELECT count(*) FROM players p
+                    WHERE (:team IS NULL OR lower(cast(p.team as text)) LIKE lower(concat('%', :team, '%')))
+                      AND (:position IS NULL OR lower(cast(p.position as text)) LIKE lower(concat('%', :position, '%')))
+                      AND (:q IS NULL OR lower(cast(p.name as text)) LIKE lower(concat('%', :q, '%'))
+                           OR lower(cast(p.team as text)) LIKE lower(concat('%', :q, '%'))
+                           OR lower(cast(p.league as text)) LIKE lower(concat('%', :q, '%')))
+                      AND (:regStart IS NULL OR p.registration_date >= :regStart)
+                      AND (:regEnd IS NULL OR p.registration_date <= :regEnd)
+                    """,
+            nativeQuery = true)
     Page<Player> findFiltered(
             @Param("team") String team,
             @Param("position") String position,
@@ -54,23 +82,30 @@ public interface PlayerRepository extends JpaRepository<Player, UUID> {
                         ))
                       )
                     ) <= :radiusKm
-                    ORDER BY p.name
+                    ORDER BY cast(p.name as text)
                     """,
             nativeQuery = true)
     List<Player> findNearby(@Param("lat") double lat, @Param("lng") double lng, @Param("radiusKm") double radiusKm);
 
     @Query(
-            """
-            SELECT COUNT(p) > 0 FROM Player p
-            WHERE lower(p.name) = lower(:name) AND lower(p.team) = lower(:team)
-            """)
+            value =
+                    """
+                    SELECT count(*) > 0 FROM players p
+                    WHERE lower(cast(p.name as text)) = lower(cast(:name as text))
+                      AND lower(cast(p.team as text)) = lower(cast(:team as text))
+                    """,
+            nativeQuery = true)
     boolean existsByNameIgnoreCaseAndTeamIgnoreCase(@Param("name") String name, @Param("team") String team);
 
     @Query(
-            """
-            SELECT COUNT(p) > 0 FROM Player p
-            WHERE lower(p.name) = lower(:name) AND lower(p.team) = lower(:team) AND p.id <> :excludeId
-            """)
+            value =
+                    """
+                    SELECT count(*) > 0 FROM players p
+                    WHERE lower(cast(p.name as text)) = lower(cast(:name as text))
+                      AND lower(cast(p.team as text)) = lower(cast(:team as text))
+                      AND p.id <> :excludeId
+                    """,
+            nativeQuery = true)
     boolean existsDuplicateExcluding(
             @Param("name") String name, @Param("team") String team, @Param("excludeId") UUID excludeId);
 }
