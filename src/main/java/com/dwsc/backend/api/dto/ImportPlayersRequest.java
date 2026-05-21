@@ -11,4 +11,12 @@ public record ImportPlayersRequest(
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Integer leagueId,
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Integer teamId,
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Integer season,
-        List<Integer> externalIds) {}
+        List<Integer> externalIds,
+        @Schema(
+                        description =
+                                "Device latitude when API-Football has no stadium coordinates (GeoJSON stores lng, lat)")
+                Double lat,
+        @Schema(
+                        description =
+                                "Device longitude when API-Football has no stadium coordinates (GeoJSON stores lng, lat)")
+                Double lng) {}

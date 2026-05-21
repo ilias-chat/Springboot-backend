@@ -16,7 +16,7 @@ Endpoints:
 - `http://localhost:8080/` → `{"message":"Hello World"}`
 - `http://localhost:8080/health` → `ok`
 - **`/api/users/*`** — Bearer Firebase ID token; same paths and JSON shapes as TRWM-backend.
-- **`POST /api/players`** — include **`lat`** and **`lng`** (device GPS) when stadium coordinates from API-Football are unavailable; the backend stores them as the player location.
+- **`POST /api/players`** and **`POST /api/admin/import-players`** — include **`lat`** and **`lng`** (device GPS) when stadium coordinates from API-Football are unavailable; the backend stores them as the player location.
 - **`/api/docs`** — Swagger UI (same path as TRWM-backend).
 - **`/api/docs.json`** — OpenAPI 3 JSON spec.
 

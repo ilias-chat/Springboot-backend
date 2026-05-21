@@ -145,14 +145,24 @@ public class ApiFootballService {
     }
 
     public ImportPayloadResult buildImportPayloads(int leagueId, int teamId, int season) {
+        return buildImportPayloads(leagueId, teamId, season, false);
+    }
+
+    /**
+     * @param allowMissingStadiumCoords when true, skip geocode and allow {@code location=null} on rows
+     *     (client supplies device {@code lat}/{@code lng} on import).
+     */
+    public ImportPayloadResult buildImportPayloads(
+            int leagueId, int teamId, int season, boolean allowMissingStadiumCoords) {
         requireConfigured();
-        String cacheKey = leagueId + ":" + teamId + ":" + season + ":import";
+        String cacheKey =
+                leagueId + ":" + teamId + ":" + season + ":import" + (allowMissingStadiumCoords ? ":dev" : "");
         CacheEntry<ImportPayloadResult> cached = importCache.get(cacheKey);
         if (cached != null && Instant.now().toEpochMilli() - cached.at() < CACHE_TTL_MS) {
             return cached.data();
         }
-        TeamStadiumContext ctx = resolveTeamStadiumContext(leagueId, teamId, season);
-        if (ctx.location() == null) {
+        TeamStadiumContext ctx = resolveTeamStadiumContext(leagueId, teamId, season, allowMissingStadiumCoords);
+        if (!allowMissingStadiumCoords && ctx.location() == null) {
             throw new ApiFootballException(
                     "Could not resolve stadium coordinates (no coords on team venue, and no venue id for /venues or geocode)",
                     422);

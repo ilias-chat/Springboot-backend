@@ -19,6 +19,7 @@ import com.dwsc.backend.model.enums.UserRole;
 import com.dwsc.backend.repository.PlayerRepository;
 import com.dwsc.backend.repository.UserRepository;
 import com.dwsc.backend.util.EscapeRegex;
+import com.dwsc.backend.util.GeoUtil;
 import com.dwsc.backend.util.UuidValidator;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -156,7 +157,7 @@ public class PlayerService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "image must be a valid base64 photo under 2MB");
         }
 
-        boolean useDeviceLocation = hasDeviceCoords(body.lat(), body.lng());
+        boolean useDeviceLocation = GeoUtil.hasDeviceCoords(body.lat(), body.lng());
         TeamStadiumContext ctx;
         try {
             ctx =
@@ -166,7 +167,7 @@ public class PlayerService {
             throw e;
         }
 
-        GeoJsonPoint location = resolvePlayerLocation(ctx.location(), body.lat(), body.lng(), useDeviceLocation);
+        GeoJsonPoint location = GeoUtil.resolvePlayerLocation(ctx.location(), body.lat(), body.lng(), useDeviceLocation);
         if (location == null) {
             throw new ResponseStatusException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
@@ -375,29 +376,6 @@ public class PlayerService {
 
     private static String blankToNull(String s) {
         return s == null || s.isBlank() ? null : s.trim();
-    }
-
-    private static boolean hasDeviceCoords(Double lat, Double lng) {
-        return lat != null
-                && lng != null
-                && Double.isFinite(lat)
-                && Double.isFinite(lng)
-                && lat >= -90
-                && lat <= 90
-                && lng >= -180
-                && lng <= 180;
-    }
-
-    /** Stadium coords from API-Football when present; otherwise device GPS when {@code useDeviceLocation}. */
-    static GeoJsonPoint resolvePlayerLocation(
-            GeoJsonPoint stadiumLocation, Double lat, Double lng, boolean useDeviceLocation) {
-        if (stadiumLocation != null) {
-            return stadiumLocation;
-        }
-        if (useDeviceLocation) {
-            return new GeoJsonPoint("Point", List.of(lng, lat));
-        }
-        return null;
     }
 
     private static double roundCoord(double n, int decimals) {

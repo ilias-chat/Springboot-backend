@@ -19,6 +19,7 @@ import com.dwsc.backend.model.entity.Player;
 import com.dwsc.backend.player.PlayerImageUtil;
 import com.dwsc.backend.player.PlayerMapper;
 import com.dwsc.backend.repository.PlayerRepository;
+import com.dwsc.backend.util.GeoUtil;
 import com.dwsc.backend.util.UuidValidator;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -83,16 +84,27 @@ public class AdminService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "leagueId, teamId, and season are required");
         }
 
+        boolean useDeviceLocation = GeoUtil.hasDeviceCoords(body.lat(), body.lng());
         ImportPayloadResult payload;
         try {
             payload =
                     apiFootballService.buildImportPayloads(
-                            body.leagueId(), body.teamId(), body.season());
+                            body.leagueId(), body.teamId(), body.season(), useDeviceLocation);
         } catch (ApiFootballException e) {
             throw e;
         }
 
         List<ImportPlayerDoc> players = payload.players();
+        GeoJsonPoint stadiumLocation =
+                players.isEmpty() || players.get(0).location() == null ? null : players.get(0).location();
+        GeoJsonPoint importLocation =
+                GeoUtil.resolvePlayerLocation(stadiumLocation, body.lat(), body.lng(), useDeviceLocation);
+        if (importLocation == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Could not resolve stadium coordinates for this team. "
+                            + "Send lat and lng in the request body (device GPS), or enable location and try again.");
+        }
         if (body.externalIds() != null) {
             if (body.externalIds().isEmpty()) {
                 throw new ResponseStatusException(
@@ -128,16 +140,17 @@ public class AdminService {
         int updated = 0;
         int matched = 0;
         for (ImportPlayerDoc doc : players) {
+            ImportPlayerDoc toSave = withLocation(doc, importLocation);
             var existing = playerRepository.findByExternalId(doc.externalId());
             if (existing.isPresent()) {
                 Player p = existing.get();
-                applyImportSet(p, doc);
+                applyImportSet(p, toSave);
                 playerRepository.save(p);
                 updated++;
                 matched++;
             } else {
                 Player p = new Player();
-                applyImportSet(p, doc);
+                applyImportSet(p, toSave);
                 p.setRegistrationDate(Instant.now());
                 playerRepository.save(p);
                 inserted++;
@@ -230,6 +243,19 @@ public class AdminService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found");
         }
         playerRepository.deleteById(playerId);
+    }
+
+    private static ImportPlayerDoc withLocation(ImportPlayerDoc doc, GeoJsonPoint location) {
+        return new ImportPlayerDoc(
+                doc.name(),
+                doc.team(),
+                doc.league(),
+                doc.image(),
+                doc.externalId(),
+                doc.position(),
+                doc.stats(),
+                doc.venueName(),
+                location);
     }
 
     private static void applyImportSet(Player player, ImportPlayerDoc doc) {
