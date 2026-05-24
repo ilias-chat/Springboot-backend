@@ -27,38 +27,54 @@ public interface PlayerRepository extends JpaRepository<Player, UUID> {
             value =
                     """
                     SELECT p.* FROM players p
-                    WHERE lower(cast(p.name as text)) LIKE lower(concat('%', :q, '%'))
+                    WHERE lower(cast(p.name as text)) LIKE lower(concat('%', cast(:q as varchar), '%'))
+                    ORDER BY cast(p.name as text) ASC
                     """,
             countQuery =
                     """
                     SELECT count(*) FROM players p
-                    WHERE lower(cast(p.name as text)) LIKE lower(concat('%', :q, '%'))
+                    WHERE lower(cast(p.name as text)) LIKE lower(concat('%', cast(:q as varchar), '%'))
                     """,
             nativeQuery = true)
     Page<Player> searchByName(@Param("q") String q, Pageable pageable);
 
+    /**
+     * Optional filters use explicit casts so PostgreSQL can type null bind parameters
+     * (avoids SQLState 42P18 "could not determine data type of parameter").
+     */
     @Query(
             value =
                     """
                     SELECT p.* FROM players p
-                    WHERE (:team IS NULL OR lower(cast(p.team as text)) LIKE lower(concat('%', :team, '%')))
-                      AND (:position IS NULL OR lower(cast(p.position as text)) LIKE lower(concat('%', :position, '%')))
-                      AND (:q IS NULL OR lower(cast(p.name as text)) LIKE lower(concat('%', :q, '%'))
-                           OR lower(cast(p.team as text)) LIKE lower(concat('%', :q, '%'))
-                           OR lower(cast(p.league as text)) LIKE lower(concat('%', :q, '%')))
-                      AND (:regStart IS NULL OR p.registration_date >= :regStart)
-                      AND (:regEnd IS NULL OR p.registration_date <= :regEnd)
+                    WHERE (cast(:team as varchar) IS NULL
+                           OR lower(cast(p.team as text)) LIKE lower(concat('%', cast(:team as varchar), '%')))
+                      AND (cast(:position as varchar) IS NULL
+                           OR lower(cast(p.position as text)) LIKE lower(concat('%', cast(:position as varchar), '%')))
+                      AND (cast(:q as varchar) IS NULL
+                           OR lower(cast(p.name as text)) LIKE lower(concat('%', cast(:q as varchar), '%'))
+                           OR lower(cast(p.team as text)) LIKE lower(concat('%', cast(:q as varchar), '%'))
+                           OR lower(cast(p.league as text)) LIKE lower(concat('%', cast(:q as varchar), '%')))
+                      AND (cast(:regStart as timestamptz) IS NULL
+                           OR p.registration_date >= cast(:regStart as timestamptz))
+                      AND (cast(:regEnd as timestamptz) IS NULL
+                           OR p.registration_date <= cast(:regEnd as timestamptz))
+                    ORDER BY cast(p.name as text) ASC
                     """,
             countQuery =
                     """
                     SELECT count(*) FROM players p
-                    WHERE (:team IS NULL OR lower(cast(p.team as text)) LIKE lower(concat('%', :team, '%')))
-                      AND (:position IS NULL OR lower(cast(p.position as text)) LIKE lower(concat('%', :position, '%')))
-                      AND (:q IS NULL OR lower(cast(p.name as text)) LIKE lower(concat('%', :q, '%'))
-                           OR lower(cast(p.team as text)) LIKE lower(concat('%', :q, '%'))
-                           OR lower(cast(p.league as text)) LIKE lower(concat('%', :q, '%')))
-                      AND (:regStart IS NULL OR p.registration_date >= :regStart)
-                      AND (:regEnd IS NULL OR p.registration_date <= :regEnd)
+                    WHERE (cast(:team as varchar) IS NULL
+                           OR lower(cast(p.team as text)) LIKE lower(concat('%', cast(:team as varchar), '%')))
+                      AND (cast(:position as varchar) IS NULL
+                           OR lower(cast(p.position as text)) LIKE lower(concat('%', cast(:position as varchar), '%')))
+                      AND (cast(:q as varchar) IS NULL
+                           OR lower(cast(p.name as text)) LIKE lower(concat('%', cast(:q as varchar), '%'))
+                           OR lower(cast(p.team as text)) LIKE lower(concat('%', cast(:q as varchar), '%'))
+                           OR lower(cast(p.league as text)) LIKE lower(concat('%', cast(:q as varchar), '%')))
+                      AND (cast(:regStart as timestamptz) IS NULL
+                           OR p.registration_date >= cast(:regStart as timestamptz))
+                      AND (cast(:regEnd as timestamptz) IS NULL
+                           OR p.registration_date <= cast(:regEnd as timestamptz))
                     """,
             nativeQuery = true)
     Page<Player> findFiltered(

@@ -21,7 +21,10 @@ With default **`DDL_AUTO=update`**, Hibernate creates/updates these tables on st
 | `users` | `models/User.js` |
 | `players` | `models/Player.js` |
 
-If **`GET /api/players`** returns 500 and Cloud Run logs show `function lower(bytea) does not exist`, text columns were created as **bytea** (legacy import). Run [scripts/postgresql-fix-player-text-columns.sql](../scripts/postgresql-fix-player-text-columns.sql) on the database, then redeploy is optional (queries also cast to `text` in code).
+If **`GET /api/players`** returns 500:
+
+- `function lower(bytea) does not exist` — text columns were created as **bytea** (legacy import). Run [scripts/postgresql-fix-player-text-columns.sql](../scripts/postgresql-fix-player-text-columns.sql) on the database.
+- `could not determine data type of parameter` (SQLState **42P18**) — fixed in app code by casting optional filter bind parameters; redeploy Spring after pulling latest `main`.
 
 ## API-Football (`/api/admin/leagues`, etc.)
 

@@ -79,14 +79,15 @@ public class PlayerService {
             regStart = day.start();
             regEnd = day.end();
         }
-        PageRequest pageable = PageRequest.of(page - 1, limit, Sort.by("name").ascending());
         String teamParam = blankToNull(team);
         String positionParam = blankToNull(position);
         String qParam = blankToNull(q);
         Page<Player> result;
         if (teamParam == null && positionParam == null && qParam == null && regStart == null) {
+            PageRequest pageable = PageRequest.of(page - 1, limit, Sort.by("name").ascending());
             result = playerRepository.findAll(pageable);
         } else {
+            PageRequest pageable = PageRequest.of(page - 1, limit);
             result = playerRepository.findFiltered(teamParam, positionParam, qParam, regStart, regEnd, pageable);
         }
         return toPaginated(result, page, limit);
@@ -97,7 +98,7 @@ public class PlayerService {
         if (q == null || q.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Query parameter q is required");
         }
-        PageRequest pageable = PageRequest.of(page - 1, limit, Sort.by("name").ascending());
+        PageRequest pageable = PageRequest.of(page - 1, limit);
         Page<Player> result = playerRepository.searchByName(EscapeRegex.escape(q.trim()), pageable);
         return toPaginated(result, page, limit);
     }
