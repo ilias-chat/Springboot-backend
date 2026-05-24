@@ -207,9 +207,10 @@ public class AdminService {
                 body.leagueId() != null && body.teamId() != null && body.season() != null;
         if (hasTeamSelection) {
             try {
+                // Location comes from lat/lng on the map; only resolve team/league/venue labels.
                 TeamStadiumContext ctx =
                         apiFootballService.resolveTeamStadiumContext(
-                                body.leagueId(), body.teamId(), body.season());
+                                body.leagueId(), body.teamId(), body.season(), true);
                 teamName = ctx.teamName();
                 leagueName = ctx.leagueName();
                 venueName = ctx.venueName();
