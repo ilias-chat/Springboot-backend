@@ -241,7 +241,7 @@ public class PlayerService {
         comment.setLocation(new GeoJsonPoint("Point", List.of(body.lng(), body.lat())));
 
         player.getComments().add(comment);
-        playerRepository.save(player);
+        playerRepository.saveAndFlush(player);
         return PlayerMapper.toCommentResponse(comment);
     }
 
