@@ -16,6 +16,7 @@ import com.dwsc.backend.model.entity.Player;
 import com.dwsc.backend.model.entity.PlayerComment;
 import com.dwsc.backend.model.entity.User;
 import com.dwsc.backend.model.enums.UserRole;
+import com.dwsc.backend.repository.PlayerCommentRepository;
 import com.dwsc.backend.repository.PlayerRepository;
 import com.dwsc.backend.repository.UserRepository;
 import com.dwsc.backend.util.EscapeRegex;
@@ -50,14 +51,17 @@ public class PlayerService {
     private static final Pattern REGISTERED_ON = Pattern.compile("^(\\d{4})-(\\d{2})-(\\d{2})$");
 
     private final PlayerRepository playerRepository;
+    private final PlayerCommentRepository playerCommentRepository;
     private final UserRepository userRepository;
     private final ApiFootballService apiFootballService;
 
     public PlayerService(
             PlayerRepository playerRepository,
+            PlayerCommentRepository playerCommentRepository,
             UserRepository userRepository,
             ApiFootballService apiFootballService) {
         this.playerRepository = playerRepository;
+        this.playerCommentRepository = playerCommentRepository;
         this.userRepository = userRepository;
         this.apiFootballService = apiFootballService;
     }
@@ -240,9 +244,8 @@ public class PlayerService {
         comment.setRating(body.rating().intValue());
         comment.setLocation(new GeoJsonPoint("Point", List.of(body.lng(), body.lat())));
 
-        player.getComments().add(comment);
-        playerRepository.saveAndFlush(player);
-        return PlayerMapper.toCommentResponse(comment);
+        PlayerComment saved = playerCommentRepository.saveAndFlush(comment);
+        return PlayerMapper.toCommentResponse(saved);
     }
 
     @Transactional
