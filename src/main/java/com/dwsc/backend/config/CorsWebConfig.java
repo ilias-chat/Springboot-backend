@@ -33,7 +33,8 @@ public class CorsWebConfig implements WebMvcConfigurer {
                         "http://localhost:8100",
                         "http://127.0.0.1:8100",
                         "ionic://localhost",
-                        "capacitor://localhost"));
+                        "capacitor://localhost",
+                        "https://localhost"));
         Stream.of(frontendOrigin, corsOrigins)
                 .filter(s -> s != null && !s.isBlank())
                 .flatMap(s -> Arrays.stream(s.split(",")))
