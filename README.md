@@ -1,49 +1,71 @@
-# DWSC Backend
+# DWSC Backend (Microservices)
 
-Spring Boot API with **PostgreSQL** (JPA) and **user routes** aligned with **TRWM-backend** (`routes/userRoutes.js`). `server.port` follows **`PORT`** (default `8080`) for Cloud Run.
+Spring Cloud microservices split into 4 Spring Boot applications:
+
+- `discovery-server` (Eureka) — port `8761`
+- `config-server` (Spring Cloud Config) — port `8888`
+- `player-service` — port `8081` (players, users, admin/API-Football, geolocation; composes player profiles with comments via Feign)
+- `comment-service` — port `8082` (comments + star ratings)
+
+Configuration is served by `config-server` from the local filesystem repo: `config-repo/`.
 
 ## Run locally
 
 ```bash
-mvn spring-boot:run
+mvn -pl discovery-server spring-boot:run
+mvn -pl config-server spring-boot:run
+mvn -pl comment-service spring-boot:run
+mvn -pl player-service spring-boot:run
 ```
 
-- **PostgreSQL:** [docs/postgresql-env.md](docs/postgresql-env.md) — JDBC + optional `application-local.properties`.
-- **Firebase (for `/api/users/*`):** set env var **`FIREBASE_SERVICE_ACCOUNT_JSON`** (same JSON as the Node backend). To skip Firebase (e.g. smoke tests), set **`dwsc.security.firebase.enabled=false`**.
+Recommended startup order:
+
+1. Discovery Server (`8761`)
+2. Config Server (`8888`)
+3. Comment Service (`8082`)
+4. Player Service (`8081`)
+
+### Databases (PostgreSQL)
+
+This split uses **two separate databases** on the same Postgres server:
+
+- **Player DB**: `dwsc_players`
+- **Comment DB**: `dwsc_comments`
+
+Each service reads its datasource settings from Config Server:
+
+- `config-repo/dwsc-player.yml`
+- `config-repo/dwsc-comment.yml`
+
+### Firebase
+
+Both `player-service` and `comment-service` validate Firebase Bearer tokens on protected routes.
+
+Set env var **`FIREBASE_SERVICE_ACCOUNT_JSON`** (same JSON as the Node backend). To skip Firebase (e.g. tests), set `dwsc.security.firebase.enabled=false`.
 
 Endpoints:
 
-- `http://localhost:8080/` → `{"message":"Hello World"}`
-- `http://localhost:8080/health` → `ok`
-- **`/api/users/*`** — Bearer Firebase ID token; same paths and JSON shapes as TRWM-backend.
-- **`POST /api/players`** and **`POST /api/admin/import-players`** — include **`lat`** and **`lng`** (device GPS) when stadium coordinates from API-Football are unavailable; the backend stores them as the player location.
-- **`/api/docs`** — Swagger UI (same path as TRWM-backend).
-- **`/api/docs.json`** — OpenAPI 3 JSON spec.
-
-On **Cloud Run**, `server.forward-headers-strategy=framework` ensures Swagger **Servers** uses `https://` (from `X-Forwarded-Proto`), so **Try it out** works when the UI is opened over HTTPS.
+- **Player Service**: `http://localhost:8081/`
+  - `GET /health`
+  - `/api/users/*` (Firebase)
+  - `/api/admin/*` (Firebase)
+  - `/api/players/*` (public GETs; protected writes)
+  - `GET /api/players/{id}` returns a player profile **including comments** (fetched from comment-service via Feign + Eureka)
+  - Swagger: `/api/docs` and `/api/docs.json`
+- **Comment Service**: `http://localhost:8082/`
+  - `GET /api/players/{playerId}/comments`
+  - `POST /api/players/{playerId}/comments` (Firebase)
+  - `DELETE /api/players/{playerId}/comments/{commentId}` (Firebase)
+  - Swagger: `/api/docs` and `/api/docs.json`
+- **Eureka**: `http://localhost:8761/`
+- **Config Server**: `http://localhost:8888/`
 
 ## Environment variables
 
-| Variable | Purpose |
-|----------|--------|
-| `SPRING_DATASOURCE_URL` | JDBC URL |
-| `SPRING_DATASOURCE_USERNAME` | DB user |
-| `SPRING_DATASOURCE_PASSWORD` | DB password |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Admin service account JSON (user API) |
-| `DDL_AUTO` | optional; use `validate` in production |
-| `DB_POOL_MAX` | optional Hikari pool size |
-
-## Docker
-
-```bash
-docker build -t dwsc-backend:local .
-docker run --rm -p 8080:8080 -e PORT=8080 \
-  -e SPRING_DATASOURCE_URL=... \
-  -e SPRING_DATASOURCE_USERNAME=... \
-  -e SPRING_DATASOURCE_PASSWORD=... \
-  -e FIREBASE_SERVICE_ACCOUNT_JSON=... \
-  dwsc-backend:local
-```
+- `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` (per-service, usually set in Config Server config files)
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `DDL_AUTO`
+- `DB_POOL_MAX`
 
 ## CI/CD
 

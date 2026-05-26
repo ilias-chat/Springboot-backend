@@ -16,9 +16,6 @@ public interface PlayerRepository extends JpaRepository<Player, UUID> {
 
     Optional<Player> findByExternalId(Integer externalId);
 
-    @Query("SELECT DISTINCT p FROM Player p LEFT JOIN FETCH p.comments WHERE p.id = :id")
-    Optional<Player> findByIdWithComments(@Param("id") UUID id);
-
     /**
      * Cast to text before lower() so PostgreSQL works when legacy columns are still bytea
      * (Cloud SQL shared with Node/Mongo migration). Prefer scripts/postgresql-fix-player-text-columns.sql.

@@ -1,12 +1,9 @@
 package com.dwsc.backend.player;
 
-import com.dwsc.backend.api.dto.AddCommentRequest;
-import com.dwsc.backend.api.dto.CommentsListResponse;
 import com.dwsc.backend.api.dto.CreatePlayerRequest;
 import com.dwsc.backend.api.dto.ErrorResponse;
 import com.dwsc.backend.api.dto.NearbyPlayersResponse;
 import com.dwsc.backend.api.dto.PaginatedPlayersResponse;
-import com.dwsc.backend.api.dto.PlayerCommentResponse;
 import com.dwsc.backend.api.dto.PlayerResponse;
 import com.dwsc.backend.auth.FirebaseAuthFilter;
 import com.dwsc.backend.config.OpenApiConfig;
@@ -20,7 +17,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -113,12 +109,6 @@ public class PlayerController {
         return playerService.getPlayerById(id);
     }
 
-    @Operation(summary = "List comments for a player")
-    @GetMapping("/{id}/comments")
-    public CommentsListResponse listComments(@PathVariable String id) {
-        return playerService.listComments(id);
-    }
-
     @Operation(summary = "Create a player (requires Firebase token)")
     @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @ApiResponses({
@@ -136,38 +126,6 @@ public class PlayerController {
     @PostMapping
     public ResponseEntity<PlayerResponse> createPlayer(@RequestBody CreatePlayerRequest body) {
         return ResponseEntity.status(HttpStatus.CREATED).body(playerService.createPlayer(body));
-    }
-
-    @Operation(summary = "Add a comment and rating (requires Firebase token)")
-    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
-    @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "Created comment"),
-        @ApiResponse(
-                responseCode = "401",
-                content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
-    @PostMapping("/{id}/comments")
-    public ResponseEntity<PlayerCommentResponse> addComment(
-            @PathVariable String id,
-            @RequestBody AddCommentRequest body,
-            HttpServletRequest request) {
-        String uid = requireUid(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(playerService.addComment(id, uid, body));
-    }
-
-    @Operation(summary = "Delete own comment or moderate as admin")
-    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
-    @ApiResponse(responseCode = "204", description = "Removed")
-    @DeleteMapping("/{id}/comments/{commentId}")
-    public ResponseEntity<Void> deleteComment(
-            @PathVariable String id,
-            @PathVariable String commentId,
-            HttpServletRequest request) {
-        String uid = requireUid(request);
-        playerService.assertCommentDeleteAllowed(id, commentId, uid);
-        playerService.deleteComment(id, commentId);
-        return ResponseEntity.noContent().build();
     }
 
     private static String requireUid(HttpServletRequest request) {

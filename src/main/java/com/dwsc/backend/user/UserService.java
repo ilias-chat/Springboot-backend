@@ -5,11 +5,12 @@ import com.dwsc.backend.api.dto.UserCommentEntryResponse;
 import com.dwsc.backend.api.dto.UserCommentPlayerSummary;
 import com.dwsc.backend.api.dto.UserCommentsListResponse;
 import com.dwsc.backend.api.dto.UserResponse;
+import com.dwsc.backend.comment.CommentClient;
+import com.dwsc.backend.comment.dto.AuthorCommentItem;
 import com.dwsc.backend.model.entity.Player;
-import com.dwsc.backend.model.entity.PlayerComment;
 import com.dwsc.backend.model.entity.User;
 import com.dwsc.backend.model.enums.UserRole;
-import com.dwsc.backend.repository.PlayerCommentRepository;
+import com.dwsc.backend.repository.PlayerRepository;
 import com.dwsc.backend.repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -21,7 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class UserService {
@@ -33,11 +37,13 @@ public class UserService {
     private static final int MAX_LIMIT = 50;
 
     private final UserRepository userRepository;
-    private final PlayerCommentRepository playerCommentRepository;
+    private final PlayerRepository playerRepository;
+    private final CommentClient commentClient;
 
-    public UserService(UserRepository userRepository, PlayerCommentRepository playerCommentRepository) {
+    public UserService(UserRepository userRepository, PlayerRepository playerRepository, CommentClient commentClient) {
         this.userRepository = userRepository;
-        this.playerCommentRepository = playerCommentRepository;
+        this.playerRepository = playerRepository;
+        this.commentClient = commentClient;
     }
 
     @Transactional
@@ -109,28 +115,47 @@ public class UserService {
     public UserCommentsListResponse listMyComments(String tokenUid, Integer pageParam, Integer limitParam) {
         int page = parsePositiveInt(pageParam, DEFAULT_PAGE);
         int limit = Math.min(parsePositiveInt(limitParam, DEFAULT_LIMIT), MAX_LIMIT);
-        var pageable = PageRequest.of(page - 1, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
-        List<PlayerComment> rows = playerCommentRepository.findByAuthorWithPlayer(tokenUid, pageable);
-        long total = playerCommentRepository.countByAuthor(tokenUid);
+        var response = commentClient.listCommentsByAuthor(tokenUid, page, limit);
+        List<AuthorCommentItem> rows = response.data() != null ? response.data() : List.of();
+        long total = response.total();
+
+        Map<UUID, Player> playerById = new HashMap<>();
+        List<UUID> playerIds = new ArrayList<>();
+        for (AuthorCommentItem c : rows) {
+            try {
+                UUID pid = UUID.fromString(c.playerId());
+                playerIds.add(pid);
+            } catch (Exception ignored) {
+                // skip
+            }
+        }
+        for (Player p : playerRepository.findAllById(playerIds)) {
+            playerById.put(p.getId(), p);
+        }
         List<UserCommentEntryResponse> data = new ArrayList<>();
-        for (PlayerComment c : rows) {
-            Player p = c.getPlayer();
+        for (AuthorCommentItem c : rows) {
+            Player p = null;
+            try {
+                p = playerById.get(UUID.fromString(c.playerId()));
+            } catch (Exception ignored) {
+                // skip
+            }
             data.add(
                     new UserCommentEntryResponse(
-                            c.getId().toString(),
-                            c.getText(),
-                            c.getRating(),
-                            c.getAuthor(),
-                            c.getAuthorName(),
-                            c.getCreatedAt(),
+                            c.id(),
+                            c.text(),
+                            c.rating(),
+                            c.author(),
+                            c.authorName(),
+                            c.createdAt(),
                             new UserCommentPlayerSummary(
-                                    p.getId().toString(),
-                                    p.getName(),
-                                    p.getTeam(),
-                                    p.getLeague(),
-                                    p.getImage())));
+                                    p != null ? p.getId().toString() : null,
+                                    p != null ? p.getName() : null,
+                                    p != null ? p.getTeam() : null,
+                                    p != null ? p.getLeague() : null,
+                                    p != null ? p.getImage() : null)));
         }
-        return new UserCommentsListResponse(data, page, limit, total);
+        return new UserCommentsListResponse(data, response.page(), response.limit(), total);
     }
 
     @Transactional

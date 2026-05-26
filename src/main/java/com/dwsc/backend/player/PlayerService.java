@@ -8,15 +8,14 @@ import com.dwsc.backend.api.dto.NearbyPlayersResponse.StadiumSummary;
 import com.dwsc.backend.api.dto.PaginatedPlayersResponse;
 import com.dwsc.backend.api.dto.PlayerCommentResponse;
 import com.dwsc.backend.api.dto.PlayerResponse;
+import com.dwsc.backend.comment.CommentClient;
 import com.dwsc.backend.football.ApiFootballException;
 import com.dwsc.backend.football.ApiFootballService;
 import com.dwsc.backend.football.ApiFootballService.TeamStadiumContext;
 import com.dwsc.backend.model.GeoJsonPoint;
 import com.dwsc.backend.model.entity.Player;
-import com.dwsc.backend.model.entity.PlayerComment;
 import com.dwsc.backend.model.entity.User;
 import com.dwsc.backend.model.enums.UserRole;
-import com.dwsc.backend.repository.PlayerCommentRepository;
 import com.dwsc.backend.repository.PlayerRepository;
 import com.dwsc.backend.repository.UserRepository;
 import com.dwsc.backend.util.EscapeRegex;
@@ -51,19 +50,19 @@ public class PlayerService {
     private static final Pattern REGISTERED_ON = Pattern.compile("^(\\d{4})-(\\d{2})-(\\d{2})$");
 
     private final PlayerRepository playerRepository;
-    private final PlayerCommentRepository playerCommentRepository;
     private final UserRepository userRepository;
     private final ApiFootballService apiFootballService;
+    private final CommentClient commentClient;
 
     public PlayerService(
             PlayerRepository playerRepository,
-            PlayerCommentRepository playerCommentRepository,
             UserRepository userRepository,
-            ApiFootballService apiFootballService) {
+            ApiFootballService apiFootballService,
+            CommentClient commentClient) {
         this.playerRepository = playerRepository;
-        this.playerCommentRepository = playerCommentRepository;
         this.userRepository = userRepository;
         this.apiFootballService = apiFootballService;
+        this.commentClient = commentClient;
     }
 
     @Transactional(readOnly = true)
@@ -108,9 +107,10 @@ public class PlayerService {
         UUID playerId = requirePlayerId(id);
         Player player =
                 playerRepository
-                        .findByIdWithComments(playerId)
+                        .findById(playerId)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found"));
-        return PlayerMapper.toResponse(player, true);
+        List<PlayerCommentResponse> comments = commentClient.listComments(player.getId().toString()).data();
+        return PlayerMapper.toResponse(player, comments);
     }
 
     @Transactional(readOnly = true)
@@ -123,7 +123,7 @@ public class PlayerService {
         }
         List<Player> players = playerRepository.findNearby(lat, lng, radiusKm);
         List<PlayerResponse> playerResponses =
-                players.stream().map(p -> PlayerMapper.toResponse(p, false)).toList();
+                players.stream().map(p -> PlayerMapper.toResponse(p, null)).toList();
         Map<String, StadiumSummary> stadiumMap = new LinkedHashMap<>();
         for (Player p : players) {
             if (p.getLocation() == null
@@ -196,96 +196,7 @@ public class PlayerService {
         if (normalizedImage != null) {
             player.setImage(normalizedImage);
         }
-        return PlayerMapper.toResponse(playerRepository.save(player), false);
-    }
-
-    @Transactional(readOnly = true)
-    public CommentsListResponse listComments(String playerId) {
-        UUID id = requirePlayerId(playerId);
-        Player player =
-                playerRepository
-                        .findByIdWithComments(id)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found"));
-        List<PlayerCommentResponse> data =
-                player.getComments().stream().map(PlayerMapper::toCommentResponse).toList();
-        return new CommentsListResponse(data);
-    }
-
-    @Transactional
-    public PlayerCommentResponse addComment(String playerId, String firebaseUid, AddCommentRequest body) {
-        UUID id = requirePlayerId(playerId);
-        if (body.text() == null || body.text().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "text is required");
-        }
-        if (body.rating() == null || body.rating() < 0 || body.rating() > 5) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rating must be a number between 0 and 5");
-        }
-        if (body.lat() == null
-                || body.lng() == null
-                || body.lat() < -90
-                || body.lat() > 90
-                || body.lng() < -180
-                || body.lng() > 180) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lat and lng must be finite numbers");
-        }
-
-        Player player =
-                playerRepository
-                        .findById(id)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found"));
-
-        User user = userRepository.findByFirebaseUid(firebaseUid).orElse(null);
-        String authorName = resolveAuthorDisplayName(user, firebaseUid);
-
-        PlayerComment comment = new PlayerComment();
-        comment.setPlayer(player);
-        comment.setAuthor(firebaseUid);
-        comment.setAuthorName(authorName);
-        comment.setText(body.text().trim());
-        comment.setRating(body.rating().intValue());
-        comment.setLocation(new GeoJsonPoint("Point", List.of(body.lng(), body.lat())));
-
-        PlayerComment saved = playerCommentRepository.saveAndFlush(comment);
-        return PlayerMapper.toCommentResponse(saved);
-    }
-
-    @Transactional
-    public void assertCommentDeleteAllowed(String playerId, String commentId, String firebaseUid) {
-        UUID pid = requirePlayerId(playerId);
-        UUID cid = requireCommentId(commentId);
-        Player player =
-                playerRepository
-                        .findByIdWithComments(pid)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found"));
-        PlayerComment comment =
-                player.getComments().stream()
-                        .filter(c -> c.getId().equals(cid))
-                        .findFirst()
-                        .orElseThrow(
-                                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
-        if (firebaseUid.equals(comment.getAuthor())) {
-            return;
-        }
-        User user = userRepository.findByFirebaseUid(firebaseUid).orElse(null);
-        if (user != null && user.getRole() == UserRole.admin) {
-            return;
-        }
-        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
-    }
-
-    @Transactional
-    public void deleteComment(String playerId, String commentId) {
-        UUID pid = requirePlayerId(playerId);
-        UUID cid = requireCommentId(commentId);
-        Player player =
-                playerRepository
-                        .findByIdWithComments(pid)
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found"));
-        boolean removed = player.getComments().removeIf(c -> c.getId().equals(cid));
-        if (!removed) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found");
-        }
-        playerRepository.save(player);
+        return PlayerMapper.toResponse(playerRepository.save(player), null);
     }
 
     public static int parsePositiveInt(String raw, int fallback) {
@@ -338,7 +249,7 @@ public class PlayerService {
 
     private PaginatedPlayersResponse toPaginated(Page<Player> page, int pageNum, int limit) {
         List<PlayerResponse> data =
-                page.getContent().stream().map(p -> PlayerMapper.toResponse(p, false)).toList();
+                page.getContent().stream().map(p -> PlayerMapper.toResponse(p, null)).toList();
         return new PaginatedPlayersResponse(data, pageNum, limit, page.getTotalElements());
     }
 

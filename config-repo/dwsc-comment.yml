@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: dwsc-comment
+
+server:
+  port: 8082
+  forward-headers-strategy: framework
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka
+
+dwsc:
+  security:
+    firebase:
+      enabled: true
+
+springdoc:
+  api-docs:
+    path: /api/docs.json
+  swagger-ui:
+    path: /api/docs
+    operationsSorter: method
+    tagsSorter: alpha
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/dwsc_comments}
+    username: ${SPRING_DATASOURCE_USERNAME:dwsc}
+    password: ${SPRING_DATASOURCE_PASSWORD:dwsc}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: ${DDL_AUTO:update}
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+logging:
+  level:
+    org.hibernate.SQL: WARN
+

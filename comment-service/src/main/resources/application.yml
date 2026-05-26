@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: dwsc-comment
+  cloud:
+    config:
+      uri: http://localhost:8888
+  config:
+    import: "optional:configserver:"
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka
+

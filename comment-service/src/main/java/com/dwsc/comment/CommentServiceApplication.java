@@ -1,16 +1,14 @@
-package com.dwsc.backend;
+package com.dwsc.comment;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
-import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-@EnableFeignClients
-public class DwscBackendApplication {
-
+public class CommentServiceApplication {
     public static void main(String[] args) {
-        SpringApplication.run(DwscBackendApplication.class, args);
+        SpringApplication.run(CommentServiceApplication.class, args);
     }
 }
+

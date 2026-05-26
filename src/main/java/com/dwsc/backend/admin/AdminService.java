@@ -234,7 +234,7 @@ public class AdminService {
             existing.setImage(normalizedImage);
         }
 
-        return PlayerMapper.toResponse(playerRepository.save(existing), false);
+        return PlayerMapper.toResponse(playerRepository.save(existing), null);
     }
 
     @Transactional

@@ -1,0 +1,20 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: dwsc-config
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: file:../config-repo
+
+  profiles:
+    active: native
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka
+
