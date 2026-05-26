@@ -6,9 +6,13 @@ import com.dwsc.comment.api.dto.AuthorCommentsPageResponse;
 import com.dwsc.comment.api.dto.CommentsListResponse;
 import com.dwsc.comment.api.dto.PlayerCommentResponse;
 import com.dwsc.comment.auth.FirebaseAuthFilter;
+import com.dwsc.comment.config.OpenApiConfig;
 import com.dwsc.comment.model.GeoJsonPoint;
 import com.dwsc.comment.model.entity.Comment;
 import com.dwsc.comment.repository.CommentRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -29,6 +33,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Comments", description = "Player comments and star ratings")
 public class CommentController {
 
     private final CommentRepository commentRepository;
@@ -37,6 +42,7 @@ public class CommentController {
         this.commentRepository = commentRepository;
     }
 
+    @Operation(summary = "List comments for a player (public)")
     @GetMapping("/players/{playerId}/comments")
     public CommentsListResponse listComments(@PathVariable String playerId) {
         UUID pid = requireUuid(playerId, "Invalid player id");
@@ -47,6 +53,8 @@ public class CommentController {
         return new CommentsListResponse(data);
     }
 
+    @Operation(summary = "Add a comment and rating (requires Firebase token)")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @PostMapping("/players/{playerId}/comments")
     public ResponseEntity<PlayerCommentResponse> addComment(
             @PathVariable String playerId,
@@ -82,6 +90,8 @@ public class CommentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(CommentMapper.toPlayerCommentResponse(saved));
     }
 
+    @Operation(summary = "Delete own comment (requires Firebase token)")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @DeleteMapping("/players/{playerId}/comments/{commentId}")
     public ResponseEntity<Void> deleteComment(
             @PathVariable String playerId,
@@ -99,6 +109,8 @@ public class CommentController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "List current user's comments (requires Firebase token)")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @GetMapping("/comments")
     public AuthorCommentsPageResponse listCommentsByAuthor(
             @RequestParam String author,
