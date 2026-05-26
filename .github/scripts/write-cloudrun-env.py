@@ -69,7 +69,8 @@ def _datasource(out: dict[str, str], url_env: str) -> None:
 
 
 def build(service: str, eureka_url: str, config_url: str, hostname: str) -> dict[str, str]:
-    out: dict[str, str] = {"PORT": "8080"}
+    # Do not set PORT — Cloud Run injects it automatically (reserved env var).
+    out: dict[str, str] = {}
 
     if service == "discovery":
         return out

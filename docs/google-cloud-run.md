@@ -14,7 +14,7 @@ Workflows:
 1. **`.github/workflows/ci.yml`** — `mvn verify` on PRs and non-main branches.
 2. **`.github/workflows/cd.yml`** — on push to **`main`/`master`**: tests, builds **four images**, deploys in order (discovery → config → comment → player), patches Eureka hostnames, smoke tests.
 
-Each container listens on **`PORT=8080`** (Cloud Run default). Local dev still uses 8761 / 8888 / 8081 / 8082.
+Each container listens on the **`PORT`** env var injected by Cloud Run (typically `8080`); Spring uses `server.port=${PORT:…}` in config. Do not set `PORT` in deploy env files — it is reserved. Local dev still uses 8761 / 8888 / 8081 / 8082.
 
 ---
 

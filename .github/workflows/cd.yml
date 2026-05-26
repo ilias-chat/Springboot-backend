@@ -141,9 +141,6 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Write discovery env file
-        run: python3 .github/scripts/write-cloudrun-env.py --service discovery --out cloudrun-env-discovery.json
-
       - name: Deploy discovery-server
         id: deploy-discovery
         uses: google-github-actions/deploy-cloudrun@v2
@@ -152,8 +149,6 @@ jobs:
           region: ${{ env.GCP_REGION_NAME }}
           project_id: ${{ env.GCP_PROJECT }}
           image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_DISCOVERY }}:${{ github.sha }}
-          env_vars_file: cloudrun-env-discovery.json
-          env_vars_update_strategy: merge
           flags: --allow-unauthenticated --port=8080 --min-instances=1
 
       - name: Record discovery URL
