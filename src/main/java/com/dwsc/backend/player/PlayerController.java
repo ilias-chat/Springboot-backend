@@ -40,12 +40,12 @@ public class PlayerController {
     @ApiResponse(responseCode = "200", description = "Paginated players")
     @GetMapping
     public PaginatedPlayersResponse listPlayers(
-            @RequestParam(required = false) String team,
-            @RequestParam(required = false) String position,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) String registeredOn,
-            @RequestParam(required = false, defaultValue = "1") String page,
-            @RequestParam(required = false, defaultValue = "20") String limit) {
+            @RequestParam(value = "team", required = false) String team,
+            @RequestParam(value = "position", required = false) String position,
+            @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "registeredOn", required = false) String registeredOn,
+            @RequestParam(value = "page", required = false, defaultValue = "1") String page,
+            @RequestParam(value = "limit", required = false, defaultValue = "20") String limit) {
         return playerService.listPlayers(
                 team,
                 position,
@@ -65,9 +65,9 @@ public class PlayerController {
     })
     @GetMapping("/search")
     public PaginatedPlayersResponse searchPlayers(
-            @RequestParam String q,
-            @RequestParam(required = false, defaultValue = "1") String page,
-            @RequestParam(required = false, defaultValue = "20") String limit) {
+            @RequestParam("q") String q,
+            @RequestParam(value = "page", required = false, defaultValue = "1") String page,
+            @RequestParam(value = "limit", required = false, defaultValue = "20") String limit) {
         return playerService.searchPlayers(
                 q, PlayerService.parsePositiveInt(page, 1), PlayerService.parseLimit(limit));
     }
@@ -81,10 +81,10 @@ public class PlayerController {
     })
     @GetMapping("/nearby")
     public NearbyPlayersResponse nearbyPlayers(
-            @RequestParam double lat,
-            @RequestParam double lng,
-            @RequestParam(required = false) Double radiusKm,
-            @RequestParam(required = false) Double distance) {
+            @RequestParam("lat") double lat,
+            @RequestParam("lng") double lng,
+            @RequestParam(value = "radiusKm", required = false) Double radiusKm,
+            @RequestParam(value = "distance", required = false) Double distance) {
         Double radius = radiusKm;
         if (radius == null) {
             radius = PlayerService.parseOptionalRadiusKm(null, distance != null ? String.valueOf(distance) : null);
@@ -105,7 +105,7 @@ public class PlayerController {
                 content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @GetMapping("/{id}")
-    public PlayerResponse getPlayerById(@PathVariable String id) {
+    public PlayerResponse getPlayerById(@PathVariable("id") String id) {
         return playerService.getPlayerById(id);
     }
 

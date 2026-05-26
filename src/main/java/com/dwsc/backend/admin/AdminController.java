@@ -47,7 +47,7 @@ public class AdminController {
     @Operation(summary = "List leagues for a season (API-Football)")
     @GetMapping("/leagues")
     public FootballOptionsResponse<FootballLeagueOption> listLeagues(
-            @RequestParam int season, HttpServletRequest request) {
+            @RequestParam("season") int season, HttpServletRequest request) {
         authSupport.requireUser(request);
         return adminService.listLeagues(season);
     }
@@ -55,7 +55,9 @@ public class AdminController {
     @Operation(summary = "List teams for a league and season (API-Football)")
     @GetMapping("/teams")
     public FootballOptionsResponse<FootballTeamOption> listTeams(
-            @RequestParam int leagueId, @RequestParam int season, HttpServletRequest request) {
+            @RequestParam("leagueId") int leagueId,
+            @RequestParam("season") int season,
+            HttpServletRequest request) {
         authSupport.requireUser(request);
         return adminService.listTeams(leagueId, season);
     }
@@ -63,9 +65,9 @@ public class AdminController {
     @Operation(summary = "Squad roster preview for import UI (API-Football)")
     @GetMapping("/squad-players")
     public FootballSquadPlayersResponse listSquadPlayers(
-            @RequestParam int leagueId,
-            @RequestParam int teamId,
-            @RequestParam int season,
+            @RequestParam("leagueId") int leagueId,
+            @RequestParam("teamId") int teamId,
+            @RequestParam("season") int season,
             HttpServletRequest request) {
         authSupport.requireUser(request);
         return adminService.listSquadPlayers(leagueId, teamId, season);
@@ -97,7 +99,7 @@ public class AdminController {
     })
     @PatchMapping("/players/{id}")
     public PlayerResponse updatePlayer(
-            @PathVariable String id, @RequestBody UpdatePlayerRequest body, HttpServletRequest request) {
+            @PathVariable("id") String id, @RequestBody UpdatePlayerRequest body, HttpServletRequest request) {
         authSupport.requireAdmin(request);
         return adminService.updatePlayer(id, body);
     }
@@ -105,7 +107,7 @@ public class AdminController {
     @Operation(summary = "Remove a player from the local database (admin)")
     @ApiResponse(responseCode = "204", description = "Deleted")
     @DeleteMapping("/players/{id}")
-    public ResponseEntity<Void> deletePlayer(@PathVariable String id, HttpServletRequest request) {
+    public ResponseEntity<Void> deletePlayer(@PathVariable("id") String id, HttpServletRequest request) {
         authSupport.requireAdmin(request);
         adminService.deletePlayer(id);
         return ResponseEntity.noContent().build();

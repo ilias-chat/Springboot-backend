@@ -104,8 +104,8 @@ public class UserController {
     @GetMapping("/me/comments")
     public ResponseEntity<UserCommentsListResponse> myComments(
             HttpServletRequest request,
-            @Parameter(description = "Page number (1-based)") @RequestParam(required = false) Integer page,
-            @Parameter(description = "Page size (max 50)") @RequestParam(required = false) Integer limit) {
+            @Parameter(description = "Page number (1-based)") @RequestParam(value = "page", required = false) Integer page,
+            @Parameter(description = "Page size (max 50)") @RequestParam(value = "limit", required = false) Integer limit) {
         String uid = requireUid(request);
         return ResponseEntity.ok(userService.listMyComments(uid, page, limit));
     }
@@ -120,7 +120,7 @@ public class UserController {
     })
     @PutMapping("/{uid}")
     public ResponseEntity<UserResponse> updateProfile(
-            @Parameter(description = "Firebase UID (must match token)") @PathVariable String uid,
+            @Parameter(description = "Firebase UID (must match token)") @PathVariable("uid") String uid,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                             content = @Content(schema = @Schema(implementation = UpdateProfileBody.class)))
                     @RequestBody(required = false)
@@ -156,7 +156,7 @@ public class UserController {
     })
     @PatchMapping("/{uid}/role")
     public ResponseEntity<UserResponse> patchRole(
-            @Parameter(description = "Target user's Firebase UID") @PathVariable String uid,
+            @Parameter(description = "Target user's Firebase UID") @PathVariable("uid") String uid,
             @RequestBody(required = false) PatchRoleBody body,
             HttpServletRequest request) {
         String adminUid = requireUid(request);
