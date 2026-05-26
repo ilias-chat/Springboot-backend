@@ -44,7 +44,7 @@ public class CommentController {
 
     @Operation(summary = "List comments for a player (public)")
     @GetMapping("/players/{playerId}/comments")
-    public CommentsListResponse listComments(@PathVariable String playerId) {
+    public CommentsListResponse listComments(@PathVariable("playerId") String playerId) {
         UUID pid = requireUuid(playerId, "Invalid player id");
         List<PlayerCommentResponse> data =
                 commentRepository.findByPlayerIdOrderByCreatedAtDesc(pid).stream()
@@ -57,7 +57,7 @@ public class CommentController {
     @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @PostMapping("/players/{playerId}/comments")
     public ResponseEntity<PlayerCommentResponse> addComment(
-            @PathVariable String playerId,
+            @PathVariable("playerId") String playerId,
             @RequestBody AddCommentRequest body,
             HttpServletRequest request) {
         UUID pid = requireUuid(playerId, "Invalid player id");
@@ -94,8 +94,8 @@ public class CommentController {
     @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @DeleteMapping("/players/{playerId}/comments/{commentId}")
     public ResponseEntity<Void> deleteComment(
-            @PathVariable String playerId,
-            @PathVariable String commentId,
+            @PathVariable("playerId") String playerId,
+            @PathVariable("commentId") String commentId,
             HttpServletRequest request) {
         requireUuid(playerId, "Invalid player id");
         UUID cid = requireUuid(commentId, "Invalid comment id");
@@ -113,9 +113,9 @@ public class CommentController {
     @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @GetMapping("/comments")
     public AuthorCommentsPageResponse listCommentsByAuthor(
-            @RequestParam String author,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam("author") String author,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "limit", defaultValue = "20") int limit,
             HttpServletRequest request) {
         String uid = requireUid(request);
         if (!uid.equals(author)) {
