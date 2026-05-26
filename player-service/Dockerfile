@@ -1,8 +1,4 @@
-# Deprecated: use module Dockerfiles instead.
-# Player service (example):
-#   docker build -f player-service/Dockerfile -t dwsc-player:local .
-# See README and docs/google-cloud-run.md for all four services.
-
+# Build from repo root: docker build -f player-service/Dockerfile .
 FROM maven:3.9.9-eclipse-temurin-17 AS build
 WORKDIR /app
 COPY pom.xml .
@@ -20,6 +16,5 @@ COPY --from=build /app/player-service/target/*.jar /app/app.jar
 RUN chown spring:spring /app/app.jar
 USER spring:spring
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
-ENV PORT=8080
 EXPOSE 8080
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

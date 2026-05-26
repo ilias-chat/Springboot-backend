@@ -1,5 +1,6 @@
 server:
-  port: 8888
+  port: ${PORT:8888}
+  forward-headers-strategy: framework
 
 spring:
   application:
@@ -8,7 +9,7 @@ spring:
     config:
       server:
         native:
-          search-locations: file:../config-repo
+          search-locations: ${SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS:file:../config-repo}
 
   profiles:
     active: native
@@ -16,5 +17,10 @@ spring:
 eureka:
   client:
     serviceUrl:
-      defaultZone: http://localhost:8761/eureka
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka}
+  instance:
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    non-secure-port-enabled: false
+    secure-port-enabled: true
+    secure-port: 443
 

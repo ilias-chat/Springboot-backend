@@ -72,9 +72,11 @@ Endpoints:
 | Workflow | File | When |
 |----------|------|------|
 | **CI** | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | PRs to `main`/`master`; pushes to other branches |
-| **CD** | [`.github/workflows/cd.yml`](.github/workflows/cd.yml) | Push to `main` or `master`: tests, Docker Hub, Cloud Run |
+| **CD** | [`.github/workflows/cd.yml`](.github/workflows/cd.yml) | Push to `main` or `master`: tests, **4 Docker images**, **4 Cloud Run services** |
 
-**Secrets / variables:** [docs/google-cloud-run.md](docs/google-cloud-run.md)
+CD deploys (in order): `dwsc-discovery` → `dwsc-config` → `dwsc-comment` → `dwsc-player`.
+
+**Secrets / variables:** [docs/google-cloud-run.md](docs/google-cloud-run.md) — includes `SPRING_DATASOURCE_URL_PLAYER`, `SPRING_DATASOURCE_URL_COMMENT`, and per-service Cloud Run / Docker Hub names.
 
 ## Tests
 

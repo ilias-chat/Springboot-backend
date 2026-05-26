@@ -1,18 +1,7 @@
-# Git and IDE
-.git
-.github
-.idea
-.vscode
+**/target/
+.git/
+.github/
+.idea/
 *.iml
-
-# Build output (fresh build inside Docker)
-target
-
-# Docs and misc
-*.md
-!README.md
-
-# Logs and local env (never bake secrets into images)
-*.log
-.env
-.env.*
+.cursor/
+agent-transcripts/

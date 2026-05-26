@@ -1,30 +1,24 @@
-# CD: build Docker image → Docker Hub → Google Cloud Run
+# CD: build 4 Docker images → Docker Hub → deploy 4 Cloud Run services
 #
-# GitHub secret/variable names match TRWM-backend (Node) `.github/workflows/cd.yml`:
+# Required secrets (Actions → Secrets):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, GCP_SA_KEY
+#   SPRING_DATASOURCE_URL_PLAYER, SPRING_DATASOURCE_URL_COMMENT
+#   SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
+#   GCP_PROJECT_ID, GCP_REGION (secret or variable)
 #
-# Secrets (Settings → Secrets and variables → Actions → Secrets):
-#   DOCKERHUB_USERNAME   Docker Hub namespace (username or org)
-#   DOCKERHUB_TOKEN      Docker Hub Access Token (Read & Write) — paste as ONE line, no quotes, no trailing newline
-#   GCP_SA_KEY           Service account JSON key for deploying to Cloud Run
-# You can store GCP + repo name as either Secrets or Variables. This workflow reads
-# Secrets first (matches common setups), then falls back to Variables.
+# Optional secrets:
+#   FIREBASE_SERVICE_ACCOUNT_JSON, API_FOOTBALL_KEY
+#   SPRING_DATASOURCE_URL — legacy fallback for player DB only
 #
-#   GCP_PROJECT_ID       GCP project ID (e.g. my-project-123)
-#   GCP_REGION           e.g. europe-west1
-#   CLOUD_RUN_SERVICE    Cloud Run service name
-#   DOCKERHUB_REPO       Docker Hub image repository name (defaults to dwsc-backend)
-#
-# Optional (same names as Node):
-#   MONGO_URI — not used by Spring CD env file
-#   API_FOOTBALL_KEY — merged into Cloud Run when set (same as TRWM-backend)
-#   FIREBASE_SERVICE_ACCOUNT_JSON — merged into Cloud Run when set (required for /api/users/* in production)
-#
-# Secrets merged into Cloud Run each deploy (JSON file — same pattern as Node's write-cloudrun-env.js):
-#   SPRING_DATASOURCE_URL       JDBC URL (e.g. jdbc:postgresql://IP:5432/dwsc?sslmode=require)
-#   SPRING_DATASOURCE_USERNAME  DB user
-#   SPRING_DATASOURCE_PASSWORD  DB password
-#
-# Spring listens on PORT; Cloud Run is deployed with --port=8080.
+# Optional variables (defaults shown):
+#   CLOUD_RUN_SERVICE_DISCOVERY  → dwsc-discovery
+#   CLOUD_RUN_SERVICE_CONFIG     → dwsc-config
+#   CLOUD_RUN_SERVICE_COMMENT    → dwsc-comment
+#   CLOUD_RUN_SERVICE_PLAYER     → dwsc-player
+#   DOCKERHUB_REPO_DISCOVERY     → dwsc-discovery
+#   DOCKERHUB_REPO_CONFIG        → dwsc-config
+#   DOCKERHUB_REPO_COMMENT       → dwsc-comment
+#   DOCKERHUB_REPO_PLAYER        → dwsc-player
 
 name: CD
 
@@ -41,10 +35,16 @@ permissions:
   contents: read
 
 env:
-  DOCKERHUB_REPO_NAME: ${{ secrets.DOCKERHUB_REPO || vars.DOCKERHUB_REPO || 'dwsc-backend' }}
   GCP_PROJECT: ${{ secrets.GCP_PROJECT_ID || vars.GCP_PROJECT_ID }}
   GCP_REGION_NAME: ${{ secrets.GCP_REGION || vars.GCP_REGION }}
-  CLOUD_RUN_NAME: ${{ secrets.CLOUD_RUN_SERVICE || vars.CLOUD_RUN_SERVICE }}
+  CR_DISCOVERY: ${{ secrets.CLOUD_RUN_SERVICE_DISCOVERY || vars.CLOUD_RUN_SERVICE_DISCOVERY || 'dwsc-discovery' }}
+  CR_CONFIG: ${{ secrets.CLOUD_RUN_SERVICE_CONFIG || vars.CLOUD_RUN_SERVICE_CONFIG || 'dwsc-config' }}
+  CR_COMMENT: ${{ secrets.CLOUD_RUN_SERVICE_COMMENT || vars.CLOUD_RUN_SERVICE_COMMENT || 'dwsc-comment' }}
+  CR_PLAYER: ${{ secrets.CLOUD_RUN_SERVICE_PLAYER || vars.CLOUD_RUN_SERVICE_PLAYER || 'dwsc-player' }}
+  REPO_DISCOVERY: ${{ secrets.DOCKERHUB_REPO_DISCOVERY || vars.DOCKERHUB_REPO_DISCOVERY || 'dwsc-discovery' }}
+  REPO_CONFIG: ${{ secrets.DOCKERHUB_REPO_CONFIG || vars.DOCKERHUB_REPO_CONFIG || 'dwsc-config' }}
+  REPO_COMMENT: ${{ secrets.DOCKERHUB_REPO_COMMENT || vars.DOCKERHUB_REPO_COMMENT || 'dwsc-comment' }}
+  REPO_PLAYER: ${{ secrets.DOCKERHUB_REPO_PLAYER || vars.DOCKERHUB_REPO_PLAYER || 'dwsc-player' }}
 
 jobs:
   test:
@@ -63,7 +63,7 @@ jobs:
         run: mvn -B verify -Dspring.profiles.active=test
 
   deploy:
-    name: Deploy to Cloud Run
+    name: Build and deploy microservices
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -73,8 +73,8 @@ jobs:
       - name: Verify Cloud Run configuration
         run: |
           set -euo pipefail
-          if [ -z "${GCP_PROJECT:-}" ] || [ -z "${GCP_REGION_NAME:-}" ] || [ -z "${CLOUD_RUN_NAME:-}" ]; then
-            echo "::error::Set GCP_PROJECT_ID, GCP_REGION, and CLOUD_RUN_SERVICE (repository Secrets and/or Variables — same names as TRWM-backend)."
+          if [ -z "${GCP_PROJECT:-}" ] || [ -z "${GCP_REGION_NAME:-}" ]; then
+            echo "::error::Set GCP_PROJECT_ID and GCP_REGION (repository Secrets and/or Variables)."
             exit 1
           fi
 
@@ -90,28 +90,241 @@ jobs:
           user=$(printf '%s' "$DOCKERHUB_USERNAME" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
           token=$(printf '%s' "$DOCKERHUB_TOKEN" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
           if [ -z "$user" ] || [ -z "$token" ]; then
-            echo "::error::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is empty. Add both under Settings → Secrets and variables → Actions."
+            echo "::error::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is empty."
             exit 1
           fi
           echo "DOCKERHUB_USER=$user" >> "$GITHUB_ENV"
           printf '%s' "$token" | docker login -u "$user" --password-stdin docker.io
 
-      - name: Build and push Docker image
+      - name: Build and push discovery image
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: discovery-server/Dockerfile
           push: true
           tags: |
-            ${{ env.DOCKERHUB_USER }}/${{ env.DOCKERHUB_REPO_NAME }}:latest
-            ${{ env.DOCKERHUB_USER }}/${{ env.DOCKERHUB_REPO_NAME }}:${{ github.sha }}
+            ${{ env.DOCKERHUB_USER }}/${{ env.REPO_DISCOVERY }}:latest
+            ${{ env.DOCKERHUB_USER }}/${{ env.REPO_DISCOVERY }}:${{ github.sha }}
+
+      - name: Build and push config image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: config-server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_USER }}/${{ env.REPO_CONFIG }}:latest
+            ${{ env.DOCKERHUB_USER }}/${{ env.REPO_CONFIG }}:${{ github.sha }}
+
+      - name: Build and push comment image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: comment-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_USER }}/${{ env.REPO_COMMENT }}:latest
+            ${{ env.DOCKERHUB_USER }}/${{ env.REPO_COMMENT }}:${{ github.sha }}
+
+      - name: Build and push player image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: player-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_USER }}/${{ env.REPO_PLAYER }}:latest
+            ${{ env.DOCKERHUB_USER }}/${{ env.REPO_PLAYER }}:${{ github.sha }}
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Write Cloud Run env file (JSON — Spring datasource; same idea as Node write-cloudrun-env.js)
+      - name: Write discovery env file
+        run: python3 .github/scripts/write-cloudrun-env.py --service discovery --out cloudrun-env-discovery.json
+
+      - name: Deploy discovery-server
+        id: deploy-discovery
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CR_DISCOVERY }}
+          region: ${{ env.GCP_REGION_NAME }}
+          project_id: ${{ env.GCP_PROJECT }}
+          image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_DISCOVERY }}:${{ github.sha }}
+          env_vars_file: cloudrun-env-discovery.json
+          env_vars_update_strategy: merge
+          flags: --allow-unauthenticated --port=8080 --min-instances=1
+
+      - name: Record discovery URL
+        run: |
+          set -euo pipefail
+          url="${{ steps.deploy-discovery.outputs.url }}"
+          host="${url#https://}"
+          host="${host#http://}"
+          host="${host%/}"
+          echo "EUREKA_URL=${url%/}/eureka" >> "$GITHUB_ENV"
+          echo "DISCOVERY_HOST=$host" >> "$GITHUB_ENV"
+          echo "Discovery: $url"
+
+      - name: Resolve config hostname (existing service, if any)
+        id: config-host
+        run: |
+          set -euo pipefail
+          url=$(gcloud run services describe "${{ env.CR_CONFIG }}" \
+            --project "${{ env.GCP_PROJECT }}" \
+            --region "${{ env.GCP_REGION_NAME }}" \
+            --format='value(status.url)' 2>/dev/null || true)
+          host=""
+          if [ -n "$url" ]; then
+            host="${url#https://}"
+            host="${host#http://}"
+            host="${host%/}"
+          fi
+          echo "hostname=$host" >> "$GITHUB_OUTPUT"
+
+      - name: Write config env file
+        run: |
+          python3 .github/scripts/write-cloudrun-env.py \
+            --service config \
+            --out cloudrun-env-config.json \
+            --eureka-url "$EUREKA_URL" \
+            --hostname "${{ steps.config-host.outputs.hostname }}"
+
+      - name: Deploy config-server
+        id: deploy-config
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CR_CONFIG }}
+          region: ${{ env.GCP_REGION_NAME }}
+          project_id: ${{ env.GCP_PROJECT }}
+          image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_CONFIG }}:${{ github.sha }}
+          env_vars_file: cloudrun-env-config.json
+          env_vars_update_strategy: merge
+          flags: --allow-unauthenticated --port=8080 --min-instances=1
+
+      - name: Record config URL
+        run: |
+          set -euo pipefail
+          url="${{ steps.deploy-config.outputs.url }}"
+          host="${url#https://}"
+          host="${host#http://}"
+          host="${host%/}"
+          echo "CONFIG_URL=$url" >> "$GITHUB_ENV"
+          echo "CONFIG_HOST=$host" >> "$GITHUB_ENV"
+          echo "Config: $url"
+
+      - name: Resolve comment hostname (existing service, if any)
+        id: comment-host
+        run: |
+          set -euo pipefail
+          url=$(gcloud run services describe "${{ env.CR_COMMENT }}" \
+            --project "${{ env.GCP_PROJECT }}" \
+            --region "${{ env.GCP_REGION_NAME }}" \
+            --format='value(status.url)' 2>/dev/null || true)
+          host=""
+          if [ -n "$url" ]; then
+            host="${url#https://}"
+            host="${host#http://}"
+            host="${host%/}"
+          fi
+          echo "hostname=$host" >> "$GITHUB_OUTPUT"
+
+      - name: Write comment env file
         env:
+          SPRING_DATASOURCE_URL_PLAYER: ${{ secrets.SPRING_DATASOURCE_URL_PLAYER }}
+          SPRING_DATASOURCE_URL_COMMENT: ${{ secrets.SPRING_DATASOURCE_URL_COMMENT }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 .github/scripts/write-cloudrun-env.py \
+            --service comment \
+            --out cloudrun-env-comment.json \
+            --eureka-url "$EUREKA_URL" \
+            --config-url "$CONFIG_URL" \
+            --hostname "${{ steps.comment-host.outputs.hostname }}"
+
+      - name: Deploy comment-service
+        id: deploy-comment
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CR_COMMENT }}
+          region: ${{ env.GCP_REGION_NAME }}
+          project_id: ${{ env.GCP_PROJECT }}
+          image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_COMMENT }}:${{ github.sha }}
+          env_vars_file: cloudrun-env-comment.json
+          env_vars_update_strategy: merge
+          flags: --allow-unauthenticated --port=8080
+
+      - name: Resolve player hostname (existing service, if any)
+        id: player-host
+        run: |
+          set -euo pipefail
+          url=$(gcloud run services describe "${{ env.CR_PLAYER }}" \
+            --project "${{ env.GCP_PROJECT }}" \
+            --region "${{ env.GCP_REGION_NAME }}" \
+            --format='value(status.url)' 2>/dev/null || true)
+          host=""
+          if [ -n "$url" ]; then
+            host="${url#https://}"
+            host="${host#http://}"
+            host="${host%/}"
+          fi
+          echo "hostname=$host" >> "$GITHUB_OUTPUT"
+
+      - name: Write player env file
+        env:
+          SPRING_DATASOURCE_URL_PLAYER: ${{ secrets.SPRING_DATASOURCE_URL_PLAYER }}
+          SPRING_DATASOURCE_URL_COMMENT: ${{ secrets.SPRING_DATASOURCE_URL_COMMENT }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: |
+          python3 .github/scripts/write-cloudrun-env.py \
+            --service player \
+            --out cloudrun-env-player.json \
+            --eureka-url "$EUREKA_URL" \
+            --config-url "$CONFIG_URL" \
+            --hostname "${{ steps.player-host.outputs.hostname }}"
+
+      - name: Deploy player-service
+        id: deploy-player
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CR_PLAYER }}
+          region: ${{ env.GCP_REGION_NAME }}
+          project_id: ${{ env.GCP_PROJECT }}
+          image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_PLAYER }}:${{ github.sha }}
+          env_vars_file: cloudrun-env-player.json
+          env_vars_update_strategy: merge
+          flags: --allow-unauthenticated --port=8080
+
+      - name: Patch Eureka hostnames (uses deploy output URLs)
+        run: |
+          set -euo pipefail
+          patch_hostname() {
+            local service="$1"
+            local url="$2"
+            local host="${url#https://}"
+            host="${host#http://}"
+            host="${host%/}"
+            gcloud run services update "$service" \
+              --project "${{ env.GCP_PROJECT }}" \
+              --region "${{ env.GCP_REGION_NAME }}" \
+              --update-env-vars="EUREKA_INSTANCE_HOSTNAME=${host},EUREKA_INSTANCE_NON_SECURE_PORT_ENABLED=false,EUREKA_INSTANCE_SECURE_PORT_ENABLED=true,EUREKA_INSTANCE_SECURE_PORT=443"
+          }
+          patch_hostname "${{ env.CR_CONFIG }}" "${{ steps.deploy-config.outputs.url }}"
+          patch_hostname "${{ env.CR_COMMENT }}" "${{ steps.deploy-comment.outputs.url }}"
+          patch_hostname "${{ env.CR_PLAYER }}" "${{ steps.deploy-player.outputs.url }}"
+
+      - name: Smoke test deployed services
+        env:
+          SPRING_DATASOURCE_URL_PLAYER: ${{ secrets.SPRING_DATASOURCE_URL_PLAYER }}
+          SPRING_DATASOURCE_URL_COMMENT: ${{ secrets.SPRING_DATASOURCE_URL_COMMENT }}
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
@@ -119,53 +332,10 @@ jobs:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: |
           set -euo pipefail
-          python3 << 'PY'
-          import json, os, sys
-
-          required = (
-              "SPRING_DATASOURCE_URL",
-              "SPRING_DATASOURCE_USERNAME",
-              "SPRING_DATASOURCE_PASSWORD",
-          )
-          out = {}
-          for k in required:
-              v = (os.environ.get(k) or "").strip()
-              if not v:
-                  print(f"::error::{k} is empty. Add repository Actions secret {k}.")
-                  sys.exit(1)
-              out[k] = v
-
-          fb = (os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON") or "").strip()
-          if fb:
-              try:
-                  json.loads(fb)
-              except json.JSONDecodeError as e:
-                  print(f"::error::FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: {e}")
-                  sys.exit(1)
-              out["FIREBASE_SERVICE_ACCOUNT_JSON"] = fb
-          else:
-              print("::warning::FIREBASE_SERVICE_ACCOUNT_JSON is not set. User routes will fail until you add the same secret as TRWM-backend.")
-
-          af = (os.environ.get("API_FOOTBALL_KEY") or "").strip()
-          if af.upper().startswith("API_FOOTBALL_KEY="):
-              af = af.split("=", 1)[1].strip()
-              print("::warning::API_FOOTBALL_KEY secret included 'API_FOOTBALL_KEY=' prefix; stripped for Cloud Run.")
-          if af:
-              out["API_FOOTBALL_KEY"] = af
-          else:
-              print("::warning::API_FOOTBALL_KEY is not set. Admin/API-Football routes will return 503 until you add the same secret as TRWM-backend.")
-
-          with open("cloudrun-env.json", "w", encoding="utf-8") as f:
-              json.dump(out, f)
-          PY
-
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.CLOUD_RUN_NAME }}
-          region: ${{ env.GCP_REGION_NAME }}
-          project_id: ${{ env.GCP_PROJECT }}
-          image: ${{ env.DOCKERHUB_USER }}/${{ env.DOCKERHUB_REPO_NAME }}:${{ github.sha }}
-          env_vars_file: cloudrun-env.json
-          env_vars_update_strategy: merge
-          flags: --allow-unauthenticated --port=8080
+          curl -fsS "${{ steps.deploy-config.outputs.url }}/dwsc-player/default" | head -c 200
+          echo ""
+          curl -fsS "${{ steps.deploy-player.outputs.url }}/health"
+          echo ""
+          echo "Player API: ${{ steps.deploy-player.outputs.url }}"
+          echo "Comment API: ${{ steps.deploy-comment.outputs.url }}"
+          echo "Discovery: ${{ steps.deploy-discovery.outputs.url }}"
