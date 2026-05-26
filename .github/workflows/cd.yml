@@ -149,7 +149,7 @@ jobs:
           region: ${{ env.GCP_REGION_NAME }}
           project_id: ${{ env.GCP_PROJECT }}
           image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_DISCOVERY }}:${{ github.sha }}
-          flags: --allow-unauthenticated --port=8080 --min-instances=1
+          flags: --allow-unauthenticated --port=8080 --min-instances=1 --memory=1Gi --cpu=1 --timeout=300
 
       - name: Record discovery URL
         run: |
@@ -196,7 +196,7 @@ jobs:
           image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_CONFIG }}:${{ github.sha }}
           env_vars_file: cloudrun-env-config.json
           env_vars_update_strategy: merge
-          flags: --allow-unauthenticated --port=8080 --min-instances=1
+          flags: --allow-unauthenticated --port=8080 --min-instances=1 --memory=1Gi --cpu=1 --timeout=300
 
       - name: Record config URL
         run: |
@@ -251,7 +251,7 @@ jobs:
           image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_COMMENT }}:${{ github.sha }}
           env_vars_file: cloudrun-env-comment.json
           env_vars_update_strategy: merge
-          flags: --allow-unauthenticated --port=8080
+          flags: --allow-unauthenticated --port=8080 --memory=1Gi --cpu=1 --timeout=300
 
       - name: Resolve player hostname (existing service, if any)
         id: player-host
@@ -296,7 +296,7 @@ jobs:
           image: ${{ env.DOCKERHUB_USER }}/${{ env.REPO_PLAYER }}:${{ github.sha }}
           env_vars_file: cloudrun-env-player.json
           env_vars_update_strategy: merge
-          flags: --allow-unauthenticated --port=8080
+          flags: --allow-unauthenticated --port=8080 --memory=1Gi --cpu=1 --timeout=300
 
       - name: Patch Eureka hostnames (uses deploy output URLs)
         run: |
