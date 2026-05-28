@@ -74,6 +74,7 @@ def build(
     config_url: str,
     hostname: str,
     comment_service_url: str = "",
+    player_service_url: str = "",
 ) -> dict[str, str]:
     # Do not set PORT — Cloud Run injects it automatically (reserved env var).
     out: dict[str, str] = {}
@@ -110,6 +111,11 @@ def build(
             os.environ[url_env] = fallback
         _datasource(out, url_env)
         _firebase(out)
+        player_url = _strip(player_service_url) or _strip(os.environ.get("PLAYER_SERVICE_URL"))
+        if player_url:
+            out["PLAYER_SERVICE_URL"] = player_url.rstrip("/")
+        else:
+            print("::warning::PLAYER_SERVICE_URL not set; comment author names may fall back to Firebase only.")
         return out
 
     if service == "player":
@@ -140,6 +146,7 @@ def main() -> None:
     parser.add_argument("--config-url", default="")
     parser.add_argument("--hostname", default="")
     parser.add_argument("--comment-url", default="")
+    parser.add_argument("--player-url", default="")
     args = parser.parse_args()
 
     payload = build(
@@ -148,6 +155,7 @@ def main() -> None:
         args.config_url,
         args.hostname,
         args.comment_url,
+        args.player_url,
     )
 
     with open(args.out, "w", encoding="utf-8") as handle:

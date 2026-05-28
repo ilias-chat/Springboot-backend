@@ -225,6 +225,16 @@ jobs:
           fi
           echo "hostname=$host" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve player service URL (existing service, if any)
+        id: player-url-for-comment
+        run: |
+          set -euo pipefail
+          url=$(gcloud run services describe "${{ env.CR_PLAYER }}" \
+            --project "${{ env.GCP_PROJECT }}" \
+            --region "${{ env.GCP_REGION_NAME }}" \
+            --format='value(status.url)' 2>/dev/null || true)
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+
       - name: Write comment env file
         env:
           SPRING_DATASOURCE_URL_PLAYER: ${{ secrets.SPRING_DATASOURCE_URL_PLAYER }}
@@ -239,7 +249,8 @@ jobs:
             --out cloudrun-env-comment.json \
             --eureka-url "$EUREKA_URL" \
             --config-url "$CONFIG_URL" \
-            --hostname "${{ steps.comment-host.outputs.hostname }}"
+            --hostname "${{ steps.comment-host.outputs.hostname }}" \
+            --player-url "${{ steps.player-url-for-comment.outputs.url }}"
 
       - name: Deploy comment-service
         id: deploy-comment

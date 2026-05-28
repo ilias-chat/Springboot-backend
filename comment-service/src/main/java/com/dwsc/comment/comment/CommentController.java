@@ -10,6 +10,7 @@ import com.dwsc.comment.config.OpenApiConfig;
 import com.dwsc.comment.model.GeoJsonPoint;
 import com.dwsc.comment.model.entity.Comment;
 import com.dwsc.comment.repository.CommentRepository;
+import com.dwsc.comment.user.AuthorDisplayNameResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,9 +38,12 @@ import java.util.UUID;
 public class CommentController {
 
     private final CommentRepository commentRepository;
+    private final AuthorDisplayNameResolver authorDisplayNameResolver;
 
-    public CommentController(CommentRepository commentRepository) {
+    public CommentController(
+            CommentRepository commentRepository, AuthorDisplayNameResolver authorDisplayNameResolver) {
         this.commentRepository = commentRepository;
+        this.authorDisplayNameResolver = authorDisplayNameResolver;
     }
 
     @Operation(summary = "List comments for a player (public)")
@@ -81,7 +85,7 @@ public class CommentController {
         Comment c = new Comment();
         c.setPlayerId(pid);
         c.setAuthor(uid);
-        c.setAuthorName(null);
+        c.setAuthorName(authorDisplayNameResolver.resolve(request));
         c.setText(body.text().trim());
         c.setRating(body.rating());
         c.setLocation(new GeoJsonPoint("Point", List.of(body.lng(), body.lat())));

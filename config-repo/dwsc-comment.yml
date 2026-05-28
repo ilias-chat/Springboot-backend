@@ -15,6 +15,12 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+  cloud:
+    openfeign:
+      client:
+        config:
+          dwsc-player:
+            url: ${PLAYER_SERVICE_URL:}
 
 server:
   port: ${PORT:8082}

@@ -20,6 +20,8 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public static final String ATTR_FIREBASE_UID = "firebaseUid";
+    public static final String ATTR_FIREBASE_NAME = "firebaseName";
+    public static final String ATTR_FIREBASE_EMAIL = "firebaseEmail";
 
     private final FirebaseAuthService firebaseAuthService;
 
@@ -65,6 +67,12 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
         try {
             var token = firebaseAuthService.verifyIdToken(idToken);
             request.setAttribute(ATTR_FIREBASE_UID, token.getUid());
+            if (token.getName() != null && !token.getName().isBlank()) {
+                request.setAttribute(ATTR_FIREBASE_NAME, token.getName());
+            }
+            if (token.getEmail() != null && !token.getEmail().isBlank()) {
+                request.setAttribute(ATTR_FIREBASE_EMAIL, token.getEmail());
+            }
             filterChain.doFilter(request, response);
         } catch (IllegalStateException e) {
             writeJsonError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
@@ -72,6 +80,8 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
             writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
         } finally {
             request.removeAttribute(ATTR_FIREBASE_UID);
+            request.removeAttribute(ATTR_FIREBASE_NAME);
+            request.removeAttribute(ATTR_FIREBASE_EMAIL);
         }
     }
 
