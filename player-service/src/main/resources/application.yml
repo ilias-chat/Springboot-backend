@@ -12,6 +12,12 @@ spring:
   config:
     import: "optional:configserver:"
 
+corba:
+  news:
+    host: ${CORBA_NEWS_HOST:127.0.0.1}
+    port: ${CORBA_NEWS_PORT:1050}
+    serviceName: ${CORBA_NEWS_SERVICE_NAME:NewsService}
+
 eureka:
   client:
     serviceUrl:
