@@ -1,0 +1,194 @@
+name: Deploy Standalone CORBA News to GCE
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "corba-news-service/**"
+      - ".github/workflows/deploy-corba-news-gce.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT_ID || vars.GCP_PROJECT_ID }}
+  GCP_REGION_NAME: ${{ secrets.GCP_REGION || vars.GCP_REGION || 'europe-west1' }}
+  GCP_ZONE_NAME: ${{ secrets.GCP_ZONE || vars.GCP_ZONE || 'europe-west1-b' }}
+  GCE_VM_NAME: ${{ secrets.GCE_CORBA_VM_NAME || vars.GCE_CORBA_VM_NAME || 'corba-news-vm' }}
+  GCE_MACHINE_TYPE: ${{ secrets.GCE_MACHINE_TYPE || vars.GCE_MACHINE_TYPE || 'e2-medium' }}
+  GATEWAY_PORT: ${{ secrets.CORBA_NEWS_GATEWAY_PORT || vars.CORBA_NEWS_GATEWAY_PORT || '8095' }}
+  PRODUCER_IMAGE: gcr.io/${{ secrets.GCP_PROJECT_ID || vars.GCP_PROJECT_ID }}/corba-news-producer
+  GATEWAY_IMAGE: gcr.io/${{ secrets.GCP_PROJECT_ID || vars.GCP_PROJECT_ID }}/corba-news-gateway
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required GCP config
+        run: |
+          set -euo pipefail
+          if [ -z "${GCP_PROJECT:-}" ]; then
+            echo "::error::Set GCP_PROJECT_ID as secret or variable."
+            exit 1
+          fi
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then
+            echo "::error::Set GCP_SA_KEY secret."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build and push producer image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: corba-news-service/docker/news-producer.Dockerfile
+          push: true
+          tags: |
+            ${{ env.PRODUCER_IMAGE }}:latest
+            ${{ env.PRODUCER_IMAGE }}:${{ github.sha }}
+
+      - name: Build and push gateway image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: corba-news-service/docker/news-gateway.Dockerfile
+          push: true
+          tags: |
+            ${{ env.GATEWAY_IMAGE }}:latest
+            ${{ env.GATEWAY_IMAGE }}:${{ github.sha }}
+
+      - name: Create VM if missing
+        run: |
+          set -euo pipefail
+          if gcloud compute instances describe "${GCE_VM_NAME}" --zone "${GCP_ZONE_NAME}" --project "${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "VM already exists: ${GCE_VM_NAME}"
+            exit 0
+          fi
+          gcloud compute instances create "${GCE_VM_NAME}" \
+            --project "${GCP_PROJECT}" \
+            --zone "${GCP_ZONE_NAME}" \
+            --machine-type "${GCE_MACHINE_TYPE}" \
+            --image-family debian-12 \
+            --image-project debian-cloud \
+            --tags corba-news \
+            --scopes cloud-platform
+
+      - name: Ensure firewall rule for gateway port
+        run: |
+          set -euo pipefail
+          RULE="allow-corba-news-gateway"
+          if gcloud compute firewall-rules describe "${RULE}" --project "${GCP_PROJECT}" >/dev/null 2>&1; then
+            gcloud compute firewall-rules update "${RULE}" \
+              --project "${GCP_PROJECT}" \
+              --allow "tcp:${GATEWAY_PORT}" \
+              --target-tags corba-news \
+              --source-ranges 0.0.0.0/0
+          else
+            gcloud compute firewall-rules create "${RULE}" \
+              --project "${GCP_PROJECT}" \
+              --allow "tcp:${GATEWAY_PORT}" \
+              --target-tags corba-news \
+              --source-ranges 0.0.0.0/0
+          fi
+
+      - name: Install Docker on VM if missing
+        run: |
+          set -euo pipefail
+          gcloud compute ssh "${GCE_VM_NAME}" \
+            --project "${GCP_PROJECT}" \
+            --zone "${GCP_ZONE_NAME}" \
+            --command '
+              if command -v docker >/dev/null 2>&1; then
+                exit 0
+              fi
+              sudo apt-get update -y
+              sudo apt-get install -y docker.io
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            '
+
+      - name: Deploy systemd units and start containers
+        run: |
+          set -euo pipefail
+          gcloud compute ssh "${GCE_VM_NAME}" \
+            --project "${GCP_PROJECT}" \
+            --zone "${GCP_ZONE_NAME}" \
+            --command "
+              sudo bash -lc '
+              docker pull ${PRODUCER_IMAGE}:${{ github.sha }}
+              docker pull ${GATEWAY_IMAGE}:${{ github.sha }}
+
+              cat > /etc/systemd/system/corba-news-producer.service <<\"EOF\"
+              [Unit]
+              Description=Standalone CORBA News Producer Container
+              After=docker.service
+              Requires=docker.service
+
+              [Service]
+              Restart=always
+              ExecStartPre=-/usr/bin/docker network create corba-news-net
+              ExecStartPre=-/usr/bin/docker rm -f corba-news-producer
+              ExecStart=/usr/bin/docker run --name corba-news-producer --network corba-news-net \
+                -e ORB_HOST=0.0.0.0 -e ORB_PORT=1050 -e CORBA_SERVICE_NAME=NewsService \
+                ${PRODUCER_IMAGE}:${{ github.sha }}
+              ExecStop=/usr/bin/docker stop corba-news-producer
+              ExecStopPost=-/usr/bin/docker rm -f corba-news-producer
+
+              [Install]
+              WantedBy=multi-user.target
+              EOF
+
+              cat > /etc/systemd/system/corba-news-gateway.service <<\"EOF\"
+              [Unit]
+              Description=Standalone CORBA News Gateway Container
+              After=docker.service corba-news-producer.service
+              Requires=docker.service corba-news-producer.service
+
+              [Service]
+              Restart=always
+              ExecStartPre=-/usr/bin/docker network create corba-news-net
+              ExecStartPre=-/usr/bin/docker rm -f corba-news-gateway
+              ExecStart=/usr/bin/docker run --name corba-news-gateway --network corba-news-net -p ${GATEWAY_PORT}:${GATEWAY_PORT} \
+                -e ORB_HOST=corba-news-producer -e ORB_PORT=1050 -e CORBA_SERVICE_NAME=NewsService -e GATEWAY_HTTP_PORT=${GATEWAY_PORT} \
+                ${GATEWAY_IMAGE}:${{ github.sha }}
+              ExecStop=/usr/bin/docker stop corba-news-gateway
+              ExecStopPost=-/usr/bin/docker rm -f corba-news-gateway
+
+              [Install]
+              WantedBy=multi-user.target
+              EOF
+
+              systemctl daemon-reload
+              systemctl enable corba-news-producer.service corba-news-gateway.service
+              systemctl restart corba-news-producer.service
+              systemctl restart corba-news-gateway.service
+              '
+            "
+
+      - name: Health check standalone gateway
+        run: |
+          set -euo pipefail
+          IP=$(gcloud compute instances describe "${GCE_VM_NAME}" \
+            --project "${GCP_PROJECT}" \
+            --zone "${GCP_ZONE_NAME}" \
+            --format='value(networkInterfaces[0].accessConfigs[0].natIP)')
+          echo "Gateway IP: ${IP}"
+          curl -fsS "http://${IP}:${GATEWAY_PORT}/health"
+          echo ""
+          curl -fsS "http://${IP}:${GATEWAY_PORT}/api/news"

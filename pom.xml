@@ -24,7 +24,6 @@
         <module>config-server</module>
         <module>player-service</module>
         <module>comment-service</module>
-        <module>../corba-news-service</module>
     </modules>
 
     <dependencyManagement>
