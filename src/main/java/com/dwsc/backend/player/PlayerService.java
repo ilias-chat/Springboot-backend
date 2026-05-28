@@ -8,7 +8,7 @@ import com.dwsc.backend.api.dto.NearbyPlayersResponse.StadiumSummary;
 import com.dwsc.backend.api.dto.PaginatedPlayersResponse;
 import com.dwsc.backend.api.dto.PlayerCommentResponse;
 import com.dwsc.backend.api.dto.PlayerResponse;
-import com.dwsc.backend.comment.CommentClient;
+import com.dwsc.backend.comment.CommentClientSupport;
 import com.dwsc.backend.football.ApiFootballException;
 import com.dwsc.backend.football.ApiFootballService;
 import com.dwsc.backend.football.ApiFootballService.TeamStadiumContext;
@@ -52,13 +52,13 @@ public class PlayerService {
     private final PlayerRepository playerRepository;
     private final UserRepository userRepository;
     private final ApiFootballService apiFootballService;
-    private final CommentClient commentClient;
+    private final CommentClientSupport commentClient;
 
     public PlayerService(
             PlayerRepository playerRepository,
             UserRepository userRepository,
             ApiFootballService apiFootballService,
-            CommentClient commentClient) {
+            CommentClientSupport commentClient) {
         this.playerRepository = playerRepository;
         this.userRepository = userRepository;
         this.apiFootballService = apiFootballService;
@@ -109,7 +109,7 @@ public class PlayerService {
                 playerRepository
                         .findById(playerId)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found"));
-        List<PlayerCommentResponse> comments = commentClient.listComments(player.getId().toString()).data();
+        List<PlayerCommentResponse> comments = commentClient.listPlayerComments(player.getId());
         return PlayerMapper.toResponse(player, comments);
     }
 

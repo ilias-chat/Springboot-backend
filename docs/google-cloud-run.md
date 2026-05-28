@@ -80,9 +80,9 @@ The old single-service names `CLOUD_RUN_SERVICE` / `DOCKERHUB_REPO` (`dwsc-backe
 3. Deploy **discovery** → record Eureka URL.
 4. Deploy **config** with Eureka + bundled `config-repo`.
 5. Deploy **comment** with Eureka, Config URI, comment DB secrets, Firebase.
-6. Deploy **player** with Eureka, Config URI, player DB secrets, Firebase, API-Football.
-7. **`gcloud run services update`** on config, comment, and player to set `EUREKA_INSTANCE_HOSTNAME` from each service’s public URL (needed for Feign over HTTPS).
-8. Smoke test: config endpoint + player `/health`.
+6. Deploy **player** with Eureka, Config URI, player DB secrets, Firebase, API-Football, and **`COMMENT_SERVICE_URL`** (comment-service public base URL — used by OpenFeign instead of Eureka).
+7. **`gcloud run services update`** on config, comment, and player to set `EUREKA_INSTANCE_HOSTNAME` from each service’s public URL.
+8. Smoke test: config endpoint, player `/health`, and `GET /api/players/{id}` (aggregated comments via Feign).
 
 ---
 

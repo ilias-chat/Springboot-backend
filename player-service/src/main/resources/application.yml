@@ -4,6 +4,11 @@ spring:
   cloud:
     config:
       uri: ${SPRING_CLOUD_CONFIG_URI:http://localhost:8888}
+    openfeign:
+      client:
+        config:
+          dwsc-comment:
+            url: ${COMMENT_SERVICE_URL:}
   config:
     import: "optional:configserver:"
 

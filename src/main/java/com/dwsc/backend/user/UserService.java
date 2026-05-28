@@ -5,7 +5,7 @@ import com.dwsc.backend.api.dto.UserCommentEntryResponse;
 import com.dwsc.backend.api.dto.UserCommentPlayerSummary;
 import com.dwsc.backend.api.dto.UserCommentsListResponse;
 import com.dwsc.backend.api.dto.UserResponse;
-import com.dwsc.backend.comment.CommentClient;
+import com.dwsc.backend.comment.CommentClientSupport;
 import com.dwsc.backend.comment.dto.AuthorCommentItem;
 import com.dwsc.backend.model.entity.Player;
 import com.dwsc.backend.model.entity.User;
@@ -38,9 +38,12 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PlayerRepository playerRepository;
-    private final CommentClient commentClient;
+    private final CommentClientSupport commentClient;
 
-    public UserService(UserRepository userRepository, PlayerRepository playerRepository, CommentClient commentClient) {
+    public UserService(
+            UserRepository userRepository,
+            PlayerRepository playerRepository,
+            CommentClientSupport commentClient) {
         this.userRepository = userRepository;
         this.playerRepository = playerRepository;
         this.commentClient = commentClient;

@@ -284,7 +284,8 @@ jobs:
             --out cloudrun-env-player.json \
             --eureka-url "$EUREKA_URL" \
             --config-url "$CONFIG_URL" \
-            --hostname "${{ steps.player-host.outputs.hostname }}"
+            --hostname "${{ steps.player-host.outputs.hostname }}" \
+            --comment-url "${{ steps.deploy-comment.outputs.url }}"
 
       - name: Deploy player-service
         id: deploy-player
@@ -331,6 +332,11 @@ jobs:
           echo ""
           curl -fsS "${{ steps.deploy-player.outputs.url }}/health"
           echo ""
+          player_id=$(curl -fsS "${{ steps.deploy-player.outputs.url }}/api/players?page=1&limit=1" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data'][0]['_id'] if d.get('data') else '')")
+          if [ -n "$player_id" ]; then
+            curl -fsS "${{ steps.deploy-player.outputs.url }}/api/players/${player_id}"
+            echo ""
+          fi
           echo "Player API: ${{ steps.deploy-player.outputs.url }}"
           echo "Comment API: ${{ steps.deploy-comment.outputs.url }}"
           echo "Discovery: ${{ steps.deploy-discovery.outputs.url }}"

@@ -7,7 +7,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "dwsc-comment")
+/**
+ * Cloud Run: set {@code COMMENT_SERVICE_URL} to the comment-service HTTPS base (no trailing slash).
+ * When unset, resolves instances via Eureka (local/docker).
+ */
+@FeignClient(
+        name = "dwsc-comment",
+        url = "${COMMENT_SERVICE_URL:}",
+        configuration = FeignAuthForwardingConfig.class)
 public interface CommentClient {
     @GetMapping("/api/players/{playerId}/comments")
     CommentsListResponse listComments(@PathVariable("playerId") String playerId);

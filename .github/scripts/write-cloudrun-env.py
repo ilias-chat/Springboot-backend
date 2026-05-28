@@ -68,7 +68,13 @@ def _datasource(out: dict[str, str], url_env: str) -> None:
     out["SPRING_DATASOURCE_PASSWORD"] = password
 
 
-def build(service: str, eureka_url: str, config_url: str, hostname: str) -> dict[str, str]:
+def build(
+    service: str,
+    eureka_url: str,
+    config_url: str,
+    hostname: str,
+    comment_service_url: str = "",
+) -> dict[str, str]:
     # Do not set PORT — Cloud Run injects it automatically (reserved env var).
     out: dict[str, str] = {}
 
@@ -115,6 +121,11 @@ def build(service: str, eureka_url: str, config_url: str, hostname: str) -> dict
         _datasource(out, url_env)
         _firebase(out)
         _api_football(out)
+        comment_url = _strip(comment_service_url) or _strip(os.environ.get("COMMENT_SERVICE_URL"))
+        if comment_url:
+            out["COMMENT_SERVICE_URL"] = comment_url.rstrip("/")
+        else:
+            print("::warning::COMMENT_SERVICE_URL not set; player Feign may rely on Eureka for dwsc-comment.")
         return out
 
     print(f"::error::Unknown service: {service}")
@@ -128,9 +139,16 @@ def main() -> None:
     parser.add_argument("--eureka-url", default="")
     parser.add_argument("--config-url", default="")
     parser.add_argument("--hostname", default="")
+    parser.add_argument("--comment-url", default="")
     args = parser.parse_args()
 
-    payload = build(args.service, args.eureka_url, args.config_url, args.hostname)
+    payload = build(
+        args.service,
+        args.eureka_url,
+        args.config_url,
+        args.hostname,
+        args.comment_url,
+    )
 
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(payload, handle)

@@ -15,6 +15,12 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+  cloud:
+    openfeign:
+      client:
+        config:
+          dwsc-comment:
+            url: ${COMMENT_SERVICE_URL:}
 
 server:
   port: ${PORT:8081}
