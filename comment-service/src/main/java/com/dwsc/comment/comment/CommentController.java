@@ -5,6 +5,8 @@ import com.dwsc.comment.api.dto.AuthorCommentItem;
 import com.dwsc.comment.api.dto.AuthorCommentsPageResponse;
 import com.dwsc.comment.api.dto.CommentsListResponse;
 import com.dwsc.comment.api.dto.PlayerCommentResponse;
+import com.dwsc.comment.api.dto.PlayerCommentSummary;
+import com.dwsc.comment.api.dto.PlayerCommentsSummaryResponse;
 import com.dwsc.comment.auth.FirebaseAuthFilter;
 import com.dwsc.comment.config.OpenApiConfig;
 import com.dwsc.comment.model.GeoJsonPoint;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,6 +39,8 @@ import java.util.UUID;
 @RequestMapping("/api")
 @Tag(name = "Comments", description = "Player comments and star ratings")
 public class CommentController {
+
+    private static final int MAX_SUMMARY_PLAYER_IDS = 100;
 
     private final CommentRepository commentRepository;
     private final AuthorDisplayNameResolver authorDisplayNameResolver;
@@ -55,6 +60,25 @@ public class CommentController {
                         .map(CommentMapper::toPlayerCommentResponse)
                         .toList();
         return new CommentsListResponse(data);
+    }
+
+    @Operation(summary = "Review count and average rating per player (public, for discovery lists)")
+    @GetMapping("/players/comments-summary")
+    public PlayerCommentsSummaryResponse summarizeByPlayerIds(@RequestParam("playerIds") String playerIds) {
+        List<UUID> ids = parsePlayerIds(playerIds);
+        if (ids.isEmpty()) {
+            return new PlayerCommentsSummaryResponse(List.of());
+        }
+        List<PlayerCommentSummary> data =
+                commentRepository.summarizeByPlayerIds(ids).stream()
+                        .map(
+                                row ->
+                                        new PlayerCommentSummary(
+                                                ((UUID) row[0]).toString(),
+                                                ((Number) row[1]).longValue(),
+                                                ((Number) row[2]).doubleValue()))
+                        .toList();
+        return new PlayerCommentsSummaryResponse(data);
     }
 
     @Operation(summary = "Add a comment and rating (requires Firebase token)")
@@ -132,6 +156,24 @@ public class CommentController {
         List<AuthorCommentItem> data = rows.getContent().stream().map(CommentMapper::toAuthorCommentItem).toList();
         long total = commentRepository.countByAuthor(author);
         return new AuthorCommentsPageResponse(data, safePage, safeLimit, total);
+    }
+
+    private static List<UUID> parsePlayerIds(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        List<UUID> ids = new ArrayList<>();
+        for (String part : raw.split(",")) {
+            if (ids.size() >= MAX_SUMMARY_PLAYER_IDS) {
+                break;
+            }
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            ids.add(requireUuid(trimmed, "Invalid player id in playerIds"));
+        }
+        return ids;
     }
 
     private static UUID requireUuid(String raw, String message) {

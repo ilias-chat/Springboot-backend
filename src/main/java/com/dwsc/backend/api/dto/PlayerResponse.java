@@ -25,5 +25,7 @@ public record PlayerResponse(
         Integer externalId,
         GeoJsonPoint location,
         List<PlayerCommentResponse> comments,
+        @Schema(description = "Scout report count when comments are not embedded") Long reviewCount,
+        @Schema(description = "Average scout rating when comments are not embedded") Double avgRating,
         @Schema(format = "date-time") Instant createdAt,
         @Schema(format = "date-time") Instant updatedAt) {}

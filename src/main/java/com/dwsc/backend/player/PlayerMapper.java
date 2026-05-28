@@ -11,6 +11,14 @@ public final class PlayerMapper {
     private PlayerMapper() {}
 
     public static PlayerResponse toResponse(Player player, List<PlayerCommentResponse> comments) {
+        return toResponse(player, comments, null, null);
+    }
+
+    public static PlayerResponse toResponse(
+            Player player,
+            List<PlayerCommentResponse> comments,
+            Long reviewCount,
+            Double avgRating) {
         return new PlayerResponse(
                 player.getId().toString(),
                 player.getName(),
@@ -24,6 +32,8 @@ public final class PlayerMapper {
                 player.getExternalId(),
                 player.getLocation(),
                 comments,
+                reviewCount,
+                avgRating,
                 player.getCreatedAt(),
                 player.getUpdatedAt());
     }

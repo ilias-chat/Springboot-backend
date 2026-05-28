@@ -24,5 +24,9 @@ public interface CommentClient {
             @RequestParam("author") String author,
             @RequestParam("page") int page,
             @RequestParam("limit") int limit);
+
+    @GetMapping("/api/players/comments-summary")
+    com.dwsc.backend.comment.dto.PlayerCommentsSummaryResponse summarizeByPlayerIds(
+            @RequestParam("playerIds") String playerIds);
 }
 

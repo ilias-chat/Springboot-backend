@@ -9,6 +9,7 @@ import com.dwsc.backend.api.dto.PaginatedPlayersResponse;
 import com.dwsc.backend.api.dto.PlayerCommentResponse;
 import com.dwsc.backend.api.dto.PlayerResponse;
 import com.dwsc.backend.comment.CommentClientSupport;
+import com.dwsc.backend.comment.dto.PlayerCommentSummary;
 import com.dwsc.backend.football.ApiFootballException;
 import com.dwsc.backend.football.ApiFootballService;
 import com.dwsc.backend.football.ApiFootballService.TeamStadiumContext;
@@ -110,7 +111,12 @@ public class PlayerService {
                         .findById(playerId)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found"));
         List<PlayerCommentResponse> comments = commentClient.listPlayerComments(player.getId());
-        return PlayerMapper.toResponse(player, comments);
+        long reviewCount = comments.size();
+        Double avgRating =
+                reviewCount == 0
+                        ? null
+                        : comments.stream().mapToInt(PlayerCommentResponse::rating).average().orElse(0);
+        return PlayerMapper.toResponse(player, comments, reviewCount, avgRating);
     }
 
     @Transactional(readOnly = true)
@@ -122,8 +128,7 @@ public class PlayerService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "radiusKm must be between 0 and 5000");
         }
         List<Player> players = playerRepository.findNearby(lat, lng, radiusKm);
-        List<PlayerResponse> playerResponses =
-                players.stream().map(p -> PlayerMapper.toResponse(p, null)).toList();
+        List<PlayerResponse> playerResponses = mapPlayersWithReviewSummaries(players);
         Map<String, StadiumSummary> stadiumMap = new LinkedHashMap<>();
         for (Player p : players) {
             if (p.getLocation() == null
@@ -248,9 +253,26 @@ public class PlayerService {
     }
 
     private PaginatedPlayersResponse toPaginated(Page<Player> page, int pageNum, int limit) {
-        List<PlayerResponse> data =
-                page.getContent().stream().map(p -> PlayerMapper.toResponse(p, null)).toList();
+        List<PlayerResponse> data = mapPlayersWithReviewSummaries(page.getContent());
         return new PaginatedPlayersResponse(data, pageNum, limit, page.getTotalElements());
+    }
+
+    private List<PlayerResponse> mapPlayersWithReviewSummaries(List<Player> players) {
+        if (players.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, PlayerCommentSummary> summaries = commentClient.summarizeByPlayerIds(players);
+        return players.stream()
+                .map(
+                        p -> {
+                            PlayerCommentSummary summary = summaries.get(p.getId());
+                            if (summary == null) {
+                                return PlayerMapper.toResponse(p, null, 0L, null);
+                            }
+                            return PlayerMapper.toResponse(
+                                    p, null, summary.count(), summary.avgRating());
+                        })
+                .toList();
     }
 
     private static UUID requirePlayerId(String id) {

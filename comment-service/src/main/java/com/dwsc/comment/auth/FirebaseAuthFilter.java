@@ -39,6 +39,9 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
             // author-scoped query must be authenticated
             return false;
         }
+        if ("/api/players/comments-summary".equals(uri) && "GET".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
         if (uri.matches("/api/players/[0-9a-fA-F\\-]{36}/comments") && "GET".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
