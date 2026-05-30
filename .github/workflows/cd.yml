@@ -8,6 +8,7 @@
 #
 # Optional secrets:
 #   FIREBASE_SERVICE_ACCOUNT_JSON, API_FOOTBALL_KEY
+#   GROK_API_KEY (or GROQ_API_KEY) — AI lineup for player-service POST /api/lineup/suggest
 #   SPRING_DATASOURCE_URL — legacy fallback for player DB only
 #
 # Optional variables (defaults shown):
@@ -289,6 +290,8 @@ jobs:
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           python3 .github/scripts/write-cloudrun-env.py \
             --service player \

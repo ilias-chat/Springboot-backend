@@ -53,6 +53,21 @@ def _api_football(out: dict[str, str]) -> None:
         print("::warning::API_FOOTBALL_KEY is not set.")
 
 
+def _grok(out: dict[str, str]) -> None:
+    """AI lineup key (POST /api/lineup/suggest). Provider auto-detected from prefix (gsk_ vs xai-)."""
+    found = False
+    for name in ("GROK_API_KEY", "GROQ_API_KEY"):
+        value = _strip(os.environ.get(name))
+        if value.upper().startswith(f"{name}="):
+            value = value.split("=", 1)[1].strip()
+            print(f"::warning::{name} had a prefix; stripped for Cloud Run.")
+        if value:
+            out[name] = value
+            found = True
+    if not found:
+        print("::warning::GROK_API_KEY is not set; /api/lineup/suggest will return 503.")
+
+
 def _datasource(out: dict[str, str], url_env: str) -> None:
     url = _strip(os.environ.get(url_env))
     user = _strip(os.environ.get("SPRING_DATASOURCE_USERNAME"))
@@ -127,6 +142,7 @@ def build(
         _datasource(out, url_env)
         _firebase(out)
         _api_football(out)
+        _grok(out)
         comment_url = _strip(comment_service_url) or _strip(os.environ.get("COMMENT_SERVICE_URL"))
         if comment_url:
             out["COMMENT_SERVICE_URL"] = comment_url.rstrip("/")
