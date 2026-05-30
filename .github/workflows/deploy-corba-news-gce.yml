@@ -1,11 +1,7 @@
+# Monorepo fallback deploy. Canonical CI/CD for the standalone repo is in corba-news-service/.github/workflows/.
 name: Deploy Standalone CORBA News to GCE
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - "corba-news-service/**"
-      - ".github/workflows/deploy-corba-news-gce.yml"
   workflow_dispatch:
 
 permissions:

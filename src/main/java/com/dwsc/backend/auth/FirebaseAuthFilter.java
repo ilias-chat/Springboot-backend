@@ -37,7 +37,7 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
             return true;
         }
         String uri = request.getRequestURI();
-        if (uri.startsWith("/api/users") || uri.startsWith("/api/admin")) {
+        if (uri.startsWith("/api/users") || uri.startsWith("/api/admin") || uri.startsWith("/api/lineup")) {
             return false;
         }
         if (uri.startsWith("/api/players") && "GET".equalsIgnoreCase(request.getMethod())) {

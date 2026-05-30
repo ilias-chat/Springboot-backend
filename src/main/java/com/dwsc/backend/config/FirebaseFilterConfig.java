@@ -22,7 +22,9 @@ public class FirebaseFilterConfig {
                 "/api/players",
                 "/api/players/*",
                 "/api/admin",
-                "/api/admin/*");
+                "/api/admin/*",
+                "/api/lineup",
+                "/api/lineup/*");
         return reg;
     }
 }
