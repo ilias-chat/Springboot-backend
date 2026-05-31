@@ -1,5 +1,7 @@
 # CD: build 4 Docker images → Docker Hub → deploy 4 Cloud Run services
 #
+# Manual-only — use deploy-railway.yml for production deploys while GCP billing is disabled.
+#
 # Required secrets (Actions → Secrets):
 #   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, GCP_SA_KEY
 #   SPRING_DATASOURCE_URL_PLAYER, SPRING_DATASOURCE_URL_COMMENT
@@ -23,9 +25,9 @@
 
 name: CD
 
+# Manual-only: GCP Cloud Run deploys require an active billing account on the project.
+# Auto-deploys to Railway run via deploy-railway.yml instead.
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
 
 concurrency:

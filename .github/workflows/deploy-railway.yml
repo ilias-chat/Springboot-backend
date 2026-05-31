@@ -1,0 +1,279 @@
+# Deploy DWSC-backend (4 Spring microservices + Dockerfiles) to Railway.
+#
+# Required GitHub repository secret (Settings → Secrets and variables → Actions → Secrets):
+#   RAILWAY_TOKEN   Railway PROJECT token for the project containing the 4 DWSC services.
+#
+# DB + runtime secrets (same names as Cloud Run cd.yml — pushed to Railway each deploy):
+#   SPRING_DATASOURCE_URL_PLAYER, SPRING_DATASOURCE_URL_COMMENT
+#   SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
+#   SPRING_DATASOURCE_URL          (optional legacy fallback for player DB)
+#   FIREBASE_SERVICE_ACCOUNT_JSON, API_FOOTBALL_KEY
+#   GROK_API_KEY (or GROQ_API_KEY) — AI lineup for player-service
+#
+# Optional repository variables (defaults shown):
+#   RAILWAY_SERVICE_DISCOVERY  → dwsc-discovery
+#   RAILWAY_SERVICE_CONFIG     → dwsc-config
+#   RAILWAY_SERVICE_COMMENT    → dwsc-comment
+#   RAILWAY_SERVICE_PLAYER     → dwsc-player
+#
+# In Railway, each service must use the matching Dockerfile path:
+#   discovery-server/Dockerfile, config-server/Dockerfile,
+#   comment-service/Dockerfile, player-service/Dockerfile
+# Do NOT set PORT — Railway injects it.
+
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: railway-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SVC_DISCOVERY: ${{ vars.RAILWAY_SERVICE_DISCOVERY || 'dwsc-discovery' }}
+  SVC_CONFIG: ${{ vars.RAILWAY_SERVICE_CONFIG || 'dwsc-config' }}
+  SVC_COMMENT: ${{ vars.RAILWAY_SERVICE_COMMENT || 'dwsc-comment' }}
+  SVC_PLAYER: ${{ vars.RAILWAY_SERVICE_PLAYER || 'dwsc-player' }}
+
+jobs:
+  test:
+    name: Test (Maven)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run tests
+        run: mvn -B verify -Dspring.profiles.active=test
+
+  deploy:
+    name: Deploy microservices to Railway
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Railway token
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
+            echo "::error::Set the RAILWAY_TOKEN repository secret (Railway project token)."
+            exit 1
+          fi
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy discovery-server
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "$SVC_DISCOVERY" --ci
+
+      - name: Record discovery URL
+        id: discovery
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          url=$(python3 .github/scripts/railway-service-url.py --service "$SVC_DISCOVERY")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "EUREKA_URL=${url%/}/eureka" >> "$GITHUB_ENV"
+          echo "Discovery: $url"
+
+      - name: Resolve config hostname (existing domain, if any)
+        id: config-host
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          url=$(python3 .github/scripts/railway-service-url.py --service "$SVC_CONFIG" --optional)
+          host=""
+          if [ -n "$url" ]; then
+            host="${url#https://}"
+            host="${host#http://}"
+            host="${host%/}"
+          fi
+          echo "hostname=$host" >> "$GITHUB_OUTPUT"
+
+      - name: Write and apply config env
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/write-cloudrun-env.py \
+            --service config \
+            --out cloudrun-env-config.json \
+            --eureka-url "$EUREKA_URL" \
+            --hostname "${{ steps.config-host.outputs.hostname }}"
+          python3 .github/scripts/apply-railway-env.py \
+            --service "$SVC_CONFIG" \
+            --file cloudrun-env-config.json
+
+      - name: Deploy config-server
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "$SVC_CONFIG" --ci
+
+      - name: Record config URL
+        id: config
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          url=$(python3 .github/scripts/railway-service-url.py --service "$SVC_CONFIG")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "CONFIG_URL=$url" >> "$GITHUB_ENV"
+          echo "Config: $url"
+
+      - name: Resolve comment hostname (existing domain, if any)
+        id: comment-host
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          url=$(python3 .github/scripts/railway-service-url.py --service "$SVC_COMMENT" --optional)
+          host=""
+          if [ -n "$url" ]; then
+            host="${url#https://}"
+            host="${host#http://}"
+            host="${host%/}"
+          fi
+          echo "hostname=$host" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve player service URL (existing domain, if any)
+        id: player-url-for-comment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          url=$(python3 .github/scripts/railway-service-url.py --service "$SVC_PLAYER" --optional)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Write and apply comment env
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SPRING_DATASOURCE_URL_PLAYER: ${{ secrets.SPRING_DATASOURCE_URL_PLAYER }}
+          SPRING_DATASOURCE_URL_COMMENT: ${{ secrets.SPRING_DATASOURCE_URL_COMMENT }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/write-cloudrun-env.py \
+            --service comment \
+            --out cloudrun-env-comment.json \
+            --eureka-url "$EUREKA_URL" \
+            --config-url "$CONFIG_URL" \
+            --hostname "${{ steps.comment-host.outputs.hostname }}" \
+            --player-url "${{ steps.player-url-for-comment.outputs.url }}"
+          python3 .github/scripts/apply-railway-env.py \
+            --service "$SVC_COMMENT" \
+            --file cloudrun-env-comment.json
+
+      - name: Deploy comment-service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "$SVC_COMMENT" --ci
+
+      - name: Record comment URL
+        id: comment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          url=$(python3 .github/scripts/railway-service-url.py --service "$SVC_COMMENT")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Comment: $url"
+
+      - name: Resolve player hostname (existing domain, if any)
+        id: player-host
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          url=$(python3 .github/scripts/railway-service-url.py --service "$SVC_PLAYER" --optional)
+          host=""
+          if [ -n "$url" ]; then
+            host="${url#https://}"
+            host="${host#http://}"
+            host="${host%/}"
+          fi
+          echo "hostname=$host" >> "$GITHUB_OUTPUT"
+
+      - name: Write and apply player env
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SPRING_DATASOURCE_URL_PLAYER: ${{ secrets.SPRING_DATASOURCE_URL_PLAYER }}
+          SPRING_DATASOURCE_URL_COMMENT: ${{ secrets.SPRING_DATASOURCE_URL_COMMENT }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/write-cloudrun-env.py \
+            --service player \
+            --out cloudrun-env-player.json \
+            --eureka-url "$EUREKA_URL" \
+            --config-url "$CONFIG_URL" \
+            --hostname "${{ steps.player-host.outputs.hostname }}" \
+            --comment-url "${{ steps.comment.outputs.url }}"
+          python3 .github/scripts/apply-railway-env.py \
+            --service "$SVC_PLAYER" \
+            --file cloudrun-env-player.json
+
+      - name: Deploy player-service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "$SVC_PLAYER" --ci
+
+      - name: Record player URL
+        id: player
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          url=$(python3 .github/scripts/railway-service-url.py --service "$SVC_PLAYER")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Player: $url"
+
+      - name: Patch Eureka hostnames
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/patch-railway-eureka.py --service "$SVC_CONFIG" --url "${{ steps.config.outputs.url }}"
+          python3 .github/scripts/patch-railway-eureka.py --service "$SVC_COMMENT" --url "${{ steps.comment.outputs.url }}"
+          python3 .github/scripts/patch-railway-eureka.py --service "$SVC_PLAYER" --url "${{ steps.player.outputs.url }}"
+
+      - name: Smoke test deployed services
+        run: |
+          set -euo pipefail
+          curl -fsS "${{ steps.config.outputs.url }}/dwsc-player/default" | head -c 200
+          echo ""
+          curl -fsS "${{ steps.player.outputs.url }}/health"
+          echo ""
+          player_id=$(curl -fsS "${{ steps.player.outputs.url }}/api/players?page=1&limit=1" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data'][0]['_id'] if d.get('data') else '')")
+          if [ -n "$player_id" ]; then
+            curl -fsS "${{ steps.player.outputs.url }}/api/players/${player_id}"
+            echo ""
+          fi
+          echo "Player API: ${{ steps.player.outputs.url }}"
+          echo "Comment API: ${{ steps.comment.outputs.url }}"
+          echo "Discovery: ${{ steps.discovery.outputs.url }}"
