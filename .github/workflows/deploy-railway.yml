@@ -16,10 +16,8 @@
 #   RAILWAY_SERVICE_COMMENT    → dwsc-comment
 #   RAILWAY_SERVICE_PLAYER     → dwsc-player
 #
-# In Railway, each service must use the matching Dockerfile path:
-#   discovery-server/Dockerfile, config-server/Dockerfile,
-#   comment-service/Dockerfile, player-service/Dockerfile
-# Do NOT set PORT — Railway injects it.
+# Each service uses RAILWAY_DOCKERFILE_PATH (set by this workflow) so the repo root
+# Dockerfile is not used by mistake. Do NOT set PORT — Railway injects it.
 
 name: Deploy to Railway
 
@@ -75,6 +73,16 @@ jobs:
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
+
+      - name: Configure Dockerfile path per service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variables set "RAILWAY_DOCKERFILE_PATH=discovery-server/Dockerfile" --service "$SVC_DISCOVERY"
+          railway variables set "RAILWAY_DOCKERFILE_PATH=config-server/Dockerfile" --service "$SVC_CONFIG"
+          railway variables set "RAILWAY_DOCKERFILE_PATH=comment-service/Dockerfile" --service "$SVC_COMMENT"
+          railway variables set "RAILWAY_DOCKERFILE_PATH=player-service/Dockerfile" --service "$SVC_PLAYER"
 
       - name: Deploy discovery-server
         env:
