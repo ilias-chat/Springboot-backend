@@ -1,5 +1,7 @@
 # Deploy DWSC-backend (4 Spring microservices + Dockerfiles) to Railway.
 #
+# Manual-only — production deploys use cd.yml (Cloud Run) while billing is active.
+#
 # Required GitHub repository secret (Settings → Secrets and variables → Actions → Secrets):
 #   RAILWAY_TOKEN   Railway PROJECT token for the project containing the 4 DWSC services.
 #
@@ -22,8 +24,6 @@
 name: Deploy to Railway
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
 
 concurrency:
